@@ -249,8 +249,8 @@ def analyze_backlinks(url):
     st.success("Backlink analysis complete!")
     return True
 
-# Function to generate mock results based on the input URL
-def generate_results(url):
+# Function to generate mock results based on the input URL and brand name
+def generate_results(url, brand_name=""):
     # Predefined sample results for demonstration
     sample_data = {
         "trysnow.com": [
@@ -269,27 +269,124 @@ def generate_results(url):
             {"retailer": "Nordstrom", "confidence": 90, "source": "Direct mention + backlinks", "url": "nordstrom.com/allbirds"},
             {"retailer": "Dick's Sporting Goods", "confidence": 85, "source": "Store locator + press release", "url": "dickssportinggoods.com/allbirds"},
             {"retailer": "REI", "confidence": 80, "source": "Backlinks + social media", "url": "rei.com/allbirds"}
+        ],
+        # Brand name specific matches
+        "Snow Cosmetics": [
+            {"retailer": "Macy's", "confidence": 88, "source": "Brand name search + retail partnerships", "url": "macys.com/shop/snow-cosmetics"},
+            {"retailer": "Bluemercury", "confidence": 82, "source": "Brand partnerships listing", "url": "bluemercury.com/collections/snow-cosmetics"},
+            {"retailer": "Anthropologie", "confidence": 77, "source": "Brand name search", "url": "anthropologie.com/brands/snow-cosmetics"}
+        ],
+        "Rothy's": [
+            {"retailer": "Zappos", "confidence": 87, "source": "Brand name search", "url": "zappos.com/rothys"},
+            {"retailer": "DSW", "confidence": 78, "source": "Brand partnerships", "url": "dsw.com/en/us/brands/rothys"}
+        ],
+        "Allbirds": [
+            {"retailer": "Zappos", "confidence": 89, "source": "Brand partnerships listing", "url": "zappos.com/allbirds"},
+            {"retailer": "Foot Locker", "confidence": 76, "source": "Brand name search", "url": "footlocker.com/brand/allbirds"}
         ]
     }
     
-    # Generate random results for URLs not in our sample data
-    if not any(sample_domain in url.lower() for sample_domain in sample_data.keys()):
-        # Select 3-7 random retailers
-        num_retailers = random.randint(3, 7)
-        selected_retailers = random.sample(major_retailers, num_retailers)
+    # Collect all applicable results based on URL and brand name
+    combined_results = []
+    
+    # Add URL-based results
+    for sample_domain, results in sample_data.items():
+        if sample_domain in url.lower():
+            combined_results.extend(results)
+    
+    # Add brand name-based results if provided
+    if brand_name:
+        for sample_brand, results in sample_data.items():
+            # Check if sample brand is a brand name (not ending with .com) and matches the input brand name
+            if not sample_brand.endswith(".com") and brand_name.lower() in sample_brand.lower():
+                # Add only unique retailers that weren't found in URL search
+                existing_retailers = {r["retailer"] for r in combined_results}
+                unique_brand_results = [r for r in results if r["retailer"] not in existing_retailers]
+                combined_results.extend(unique_brand_results)
+    
+    # If no specific matches, generate random results
+    if not combined_results:
+        # Generate random retailer results
+        num_retailers = random.randint(3, 8)
+        
+        # Try to make results more realistic based on the domain or brand name
+        search_term = ""
+        if brand_name:
+            search_term = brand_name.lower()
+        else:
+            # Extract domain name without extension
+            search_term = url.split('.')[0].lower()
+            if "/" in search_term:
+                search_term = search_term.split("/")[-1]
+        
+        # Product category matching (basic simulation)
+        category_retailers = {
+            "beauty": ["Sephora", "Ulta", "Bluemercury", "Macy's", "CVS", "Walgreens"],
+            "cosmetic": ["Sephora", "Ulta", "Bluemercury", "Target", "CVS"],
+            "shoe": ["DSW", "Zappos", "Foot Locker", "Famous Footwear", "Nordstrom"],
+            "apparel": ["Nordstrom", "Macy's", "TJ Maxx", "Target", "Urban Outfitters"],
+            "food": ["Whole Foods", "Kroger", "Albertsons", "Sprouts", "Wegmans"],
+            "pet": ["Chewy", "Petco", "PetSmart", "Pet Supplies Plus"],
+            "outdoor": ["REI", "Bass Pro Shop", "Cabela's", "Backcountry"],
+            "sports": ["Dick's Sporting Goods", "Academy Sports", "Foot Locker", "Hibbett Sports"]
+        }
+        
+        # Try to intelligently match retailers based on name clues
+        preferred_retailers = []
+        for category, retailers in category_retailers.items():
+            if category in search_term or any(term in search_term for term in ["snow", "cold", "winter", "ice"]):
+                # Snow might be beauty/cosmetics or outdoor
+                preferred_retailers.extend(category_retailers["beauty"])
+                preferred_retailers.extend(category_retailers["outdoor"])
+            elif any(term in search_term for term in ["shoe", "foot", "sneaker", "boots"]):
+                preferred_retailers.extend(category_retailers["shoe"])
+            elif any(term in search_term for term in ["wear", "apparel", "cloth", "dress", "fashion"]):
+                preferred_retailers.extend(category_retailers["apparel"])
+            elif any(term in search_term for term in ["beauty", "cosmetic", "skin", "makeup", "face"]):
+                preferred_retailers.extend(category_retailers["beauty"])
+            elif any(term in search_term for term in ["food", "grocery", "organic", "natural", "snack"]):
+                preferred_retailers.extend(category_retailers["food"])
+            elif any(term in search_term for term in ["pet", "dog", "cat", "animal"]):
+                preferred_retailers.extend(category_retailers["pet"])
+            elif any(term in search_term for term in ["outdoor", "camp", "hike", "mountain"]):
+                preferred_retailers.extend(category_retailers["outdoor"])
+            elif any(term in search_term for term in ["sport", "athletic", "fitness", "gym"]):
+                preferred_retailers.extend(category_retailers["sports"])
+        
+        # Make list unique
+        preferred_retailers = list(set(preferred_retailers))
+        
+        # If we found appropriate retailers for this type of product, use them
+        selected_retailers = []
+        if preferred_retailers and len(preferred_retailers) >= num_retailers:
+            selected_retailers = random.sample(preferred_retailers, num_retailers)
+        else:
+            # Fall back to general retailer list
+            selected_retailers = random.sample(major_retailers, num_retailers)
         
         random_results = []
         for retailer in selected_retailers:
             confidence = random.randint(60, 95)
-            source_types = ["Website mention", "Backlinks", "Press release", "Store locator", "Social media"]
+            source_types = ["Website mention", "Backlinks", "Press release", "Store locator", "Social media", "Brand name search"]
             sources = random.sample(source_types, random.randint(1, 3))
             source = " + ".join(sources)
             
-            retailer_domain = retailer.lower().replace(" ", "").replace("'", "")
+            # Create a sensible URL based on retailer and product
+            retailer_domain = retailer.lower().replace(" ", "").replace("'", "").split("(")[0].strip()
+            domain_parts = retailer_domain.split("/")
+            retailer_domain = domain_parts[0]
+            
+            # Format the URL based on retailer patterns
             if retailer_domain == "amazon":
-                retailer_url = f"amazon.com/s?k={url.split('.')[0]}"
+                retailer_url = f"amazon.com/s?k={search_term.replace(' ', '+')}"
+            elif retailer_domain in ["sephora", "ulta", "bluemercury"]:
+                retailer_url = f"{retailer_domain}.com/brands/{search_term.replace(' ', '-')}"
+            elif retailer_domain in ["target", "walmart"]:
+                retailer_url = f"{retailer_domain}.com/b/{search_term.replace(' ', '-')}"
+            elif retailer_domain in ["nordstrom", "macys", "bloomingdales"]:
+                retailer_url = f"{retailer_domain}.com/shop/brand/{search_term.replace(' ', '-')}"
             else:
-                retailer_url = f"{retailer_domain}.com/{url.split('.')[0]}"
+                retailer_url = f"{retailer_domain}.com/{search_term.replace(' ', '-')}"
                 
             random_results.append({
                 "retailer": retailer,
@@ -302,16 +399,12 @@ def generate_results(url):
         random_results.sort(key=lambda x: x["confidence"], reverse=True)
         return random_results
     
-    # Return the appropriate sample data
-    for sample_domain, results in sample_data.items():
-        if sample_domain in url.lower():
-            return results
-    
-    # Fallback to random results
-    return []
+    # If we have results from the sample data, return them sorted by confidence
+    combined_results.sort(key=lambda x: x["confidence"], reverse=True)
+    return combined_results
 
 # Main analysis function
-def analyze_merchant(url):
+def analyze_merchant(url, brand_name=""):
     if not url:
         st.warning("Please enter a website URL to analyze.")
         return
@@ -323,8 +416,13 @@ def analyze_merchant(url):
     # Format for display
     display_url = url.replace('https://', '').replace('http://', '').rstrip('/')
     
+    # Create display name combining URL and brand name if provided
+    display_name = display_url
+    if brand_name:
+        display_name = f"{brand_name} ({display_url})"
+    
     with st.expander("Analysis Process", expanded=True):
-        st.write(f"Analyzing partnerships for: **{display_url}**")
+        st.write(f"Analyzing partnerships for: **{display_name}**")
         
         # Simulate analysis processes
         content_analyzed = analyze_website_content(url)
@@ -333,8 +431,8 @@ def analyze_merchant(url):
         if content_analyzed and backlinks_analyzed:
             st.write("✅ Analysis complete! Generating results...")
     
-    # Generate and display results
-    results = generate_results(display_url)
+    # Generate and display results - now using both URL and brand name
+    results = generate_results(display_url, brand_name)
     
     if results:
         st.subheader("Discovered Retail Partners")
@@ -392,12 +490,21 @@ def analyze_merchant(url):
 input_method = st.radio("Choose input method:", ["Single URL", "Bulk Upload from Excel"])
 
 if input_method == "Single URL":
-    # Single URL input
-    url_input = st.text_input("Enter merchant website URL:", placeholder="e.g., trysnow.com")
+    # Single URL input with brand name option
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        url_input = st.text_input("Enter merchant website URL:", placeholder="e.g., trysnow.com")
+    
+    with col2:
+        brand_name_input = st.text_input("Enter full brand name (optional):", placeholder="e.g., Snow Cosmetics")
+    
+    # Explanation of dual search
+    st.info("Providing both the website URL and brand name improves search accuracy. The brand name helps identify partnerships that might not be evident from the domain name alone.")
     
     # Run the analysis when a button is clicked for single URL
     if st.button("Find B2B Partners for Single URL"):
-        analyze_merchant(url_input)
+        analyze_merchant(url_input, brand_name_input)
 else:
     # Bulk upload from Excel
     st.write("### Upload Excel file with merchant URLs")
@@ -420,12 +527,30 @@ else:
                     options=df_excel.columns
                 )
                 
+                # Option to select brand name column
+                has_brand_names = st.checkbox("My spreadsheet also contains brand names")
+                
+                if has_brand_names:
+                    brand_name_column = st.selectbox(
+                        "Select the column containing brand names:",
+                        options=[col for col in df_excel.columns if col != url_column]
+                    )
+                
                 # Process in batches to avoid overloading
                 max_urls = st.slider("Maximum number of URLs to process", 
                                     min_value=1, max_value=50, value=10)
                 
                 # Run bulk analysis
                 if st.button("Find B2B Partners for All URLs"):
+                    # Check if there's a brand name column
+                    brand_name_column = None
+                    if 'brand_name_column' in locals():
+                        brand_name_column = brand_name_column
+                    elif any(col.lower() in ['brand', 'brand name', 'company', 'company name'] for col in df_excel.columns):
+                        possible_columns = [col for col in df_excel.columns if col.lower() in ['brand', 'brand name', 'company', 'company name']]
+                        brand_name_column = possible_columns[0]
+                        st.info(f"Using '{brand_name_column}' as the brand name column.")
+                    
                     # Filter out empty URLs
                     valid_urls = df_excel[url_column].dropna().tolist()[:max_urls]
                     
@@ -442,7 +567,20 @@ else:
                         
                         # Process each URL
                         for i, url in enumerate(valid_urls):
-                            st.write(f"### Processing URL {i+1}/{len(valid_urls)}: {url}")
+                            # Get corresponding brand name if available
+                            brand_name = ""
+                            if brand_name_column and i < len(df_excel):
+                                brand_name = df_excel.iloc[i][brand_name_column]
+                                if pd.isna(brand_name):
+                                    brand_name = ""
+                                else:
+                                    brand_name = str(brand_name)
+                            
+                            display_text = f"URL: {url}"
+                            if brand_name:
+                                display_text += f" | Brand: {brand_name}"
+                                
+                            st.write(f"### Processing {i+1}/{len(valid_urls)}: {display_text}")
                             
                             # Clean the URL if needed
                             if not str(url).startswith('http'):
@@ -455,7 +593,7 @@ else:
                             st.write(f"Analyzing partnerships for: **{display_url}**")
                             
                             # Generate results directly without visual simulation for bulk processing
-                            results = generate_results(display_url)
+                            results = generate_results(display_url, brand_name)
                             
                             if results:
                                 # Add merchant URL to each result row
