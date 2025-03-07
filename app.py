@@ -912,9 +912,9 @@ else:
                             else:
                                 st.write(f"⚠️ No retail partners found for {display_url}")
                             
-                            # Display combined results if any
-                                if all_results:
-                        
+                            # Update progress
+                            progress_bar.progress((i + 1) / len(valid_urls))
+                            
                             # Display combined results if any
                             if all_results:
                                 st.write("## Combined Results Summary")
@@ -922,12 +922,12 @@ else:
                                 # Convert to DataFrame
                                 df_results = pd.DataFrame(all_results)
                                 
-                                # Display table of all results (all are 90%+ verified)
-                                st.write("All results shown have 90%+ verification confidence")
+                                # Display table of all results
+                                st.write("All potential retail partners with verification scores")
                                 st.dataframe(df_results)
                                 
                                 # Create summary visualization
-                                st.write("### Top Verified Retailers Across All Merchants")
+                                st.write("### Top Retailers Across All Merchants")
                                 retailer_counts = df_results['retailer'].value_counts().head(10)
                                 
                                 fig, ax = plt.subplots(figsize=(10, 6))
