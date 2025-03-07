@@ -882,30 +882,30 @@ else:
                             results = generate_results(display_url, brand_name)
                             
                             # Verify each result - change from 90%+ threshold to all results
-                                verified_results = []
-                                all_verified_results = []
-                                for result in results:
-                                    # Get verification details
-                                    verification_score, verification_source, verification_url = verify_retailer_presence(
-                                        result['retailer'], brand_name
-                                    )
+                            verified_results = []
+                            all_verified_results = []
+                            for result in results:
+                                # Get verification details
+                                verification_score, verification_source, verification_url = verify_retailer_presence(
+                                    result['retailer'], brand_name
+                                )
+                                
+                                # Add verification data to result
+                                result['verification_score'] = verification_score
+                                result['verification_source'] = verification_source
+                                result['verification_url'] = verification_url
+                                result['merchant_url'] = display_url
                                     
-                                    # Add verification data to result
-                                    result['verification_score'] = verification_score
-                                    result['verification_source'] = verification_source
-                                    result['verification_url'] = verification_url
-                                    result['merchant_url'] = display_url
+                                # Add all results
+                                all_verified_results.append(result)
                                     
-                                    # Add all results
-                                    all_verified_results.append(result)
-                                    
-                                    # Track high confidence separately
-                                    if verification_score >= 90:
-                                        verified_results.append(result)
+                                # Track high confidence separately
+                                if verification_score >= 90:
+                                      verified_results.append(result)
                                 
                                 if all_verified_results:
-                                    # Add to combined results
-                                    all_results.extend(all_verified_results))
+                                # Add to combined results
+                                all_results.extend(all_verified_results))
                         
                         # Display combined results if any
                         if all_results:
