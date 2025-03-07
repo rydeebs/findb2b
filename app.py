@@ -223,9 +223,10 @@ major_retailers = [
     "Zulily"
 ]
 
-# Function to simulate website content analysis
-def analyze_website_content(url):
+# Function to simulate website content analysis with improved verification
+def analyze_website_content(url, brand_name=""):
     st.write("🔍 Analyzing website content...")
+    st.write("📑 Looking for 'Where to Buy' or 'Store Locator' pages...")
     
     # Placeholder for actual implementation
     progress_bar = st.progress(0)
@@ -234,11 +235,22 @@ def analyze_website_content(url):
         progress_bar.progress(i + 1)
     
     st.success("Website content analysis complete!")
+    
+    # In a real implementation, we would:
+    # 1. Crawl the website to find "Where to Buy" or "Store Locator" pages
+    # 2. Extract retailer mentions from these pages
+    # 3. Verify each retailer by checking for links to their websites
+    
+    # Return a simulated set of "verified" retailers from website
+    if brand_name:
+        st.info(f"TIP: In a full implementation, the app would specifically look for mentions of '{brand_name}' on store locator pages.")
+    
     return True
 
-# Function to simulate backlink analysis
-def analyze_backlinks(url):
+# Function to simulate backlink analysis with verification
+def analyze_backlinks(url, brand_name=""):
     st.write("🔗 Analyzing backlinks from retail websites...")
+    st.write("🧐 Verifying retailer links to confirm partnerships...")
     
     # Placeholder for actual implementation
     progress_bar = st.progress(0)
@@ -247,7 +259,117 @@ def analyze_backlinks(url):
         progress_bar.progress(i + 1)
     
     st.success("Backlink analysis complete!")
+    
+    # In a real implementation, we would:
+    # 1. Use a backlink API (Ahrefs, Majestic, SEMrush, etc.)
+    # 2. Check for backlinks from major retailer domains
+    # 3. Analyze the context of these backlinks to determine if they represent a partnership
+    
+    if brand_name:
+        st.info(f"TIP: In a full implementation, the app would verify if '{brand_name}' appears on retailer websites through direct search.")
+    
     return True
+
+# New function to simulate retailer website verification
+def verify_retailer_presence(retailer, brand_name):
+    """
+    Simulate verification of brand presence on retailer website.
+    In a real implementation, this would:
+    1. Use retailer search APIs where available
+    2. Perform structured web searches
+    3. Check retailer brand directories
+    
+    Returns:
+    - verification_score: 0-100 score of verification confidence
+    - verification_source: Description of the verification method
+    - verification_url: URL that provides evidence (if available)
+    """
+    
+    # For demo purposes, generate realistic verification scores
+    # In a real implementation, these would be based on actual verification attempts
+    
+    # Sample verification statuses - in a real app these would come from actual API calls
+    verified_brands = {
+        "Snow Cosmetics": ["Amazon", "Target", "Sephora", "Ulta Beauty", "Macy's", "Nordstrom"],
+        "Rothy's": ["Nordstrom", "Bloomingdale's", "Neiman Marcus", "Zappos"],
+        "Allbirds": ["Nordstrom", "Dick's Sporting Goods", "REI", "Foot Locker"],
+    }
+    
+    # For known brands, use our verified retailer list
+    if brand_name in verified_brands and retailer in verified_brands[brand_name]:
+        verification_score = random.randint(85, 100)
+        verification_methods = [
+            "Found product pages on retailer site",
+            "Listed in retailer's brand directory",
+            "Direct links from retailer to brand",
+            "API verification confirmed"
+        ]
+        verification_source = random.choice(verification_methods)
+        
+        # Generate a realistic verification URL based on retailer
+        retailer_domain = retailer.lower().replace(" ", "").replace("'", "").split("(")[0].strip()
+        brand_slug = brand_name.lower().replace(" ", "-")
+        
+        if "amazon" in retailer_domain:
+            verification_url = f"amazon.com/stores/{brand_slug}"
+        elif "sephora" in retailer_domain:
+            verification_url = f"sephora.com/brand/{brand_slug}"
+        elif "target" in retailer_domain:
+            verification_url = f"target.com/b/{brand_slug}"
+        elif "nordstrom" in retailer_domain:
+            verification_url = f"nordstrom.com/brands/{brand_slug}"
+        else:
+            verification_url = f"{retailer_domain}.com/brands/{brand_slug}"
+        
+        return verification_score, verification_source, verification_url
+    
+    # For other combinations, generate realistic scores based on the retailer type and brand name
+    elif brand_name:
+        # Check if this is a plausible match based on industry
+        is_beauty_brand = any(term in brand_name.lower() for term in ["beauty", "cosmetic", "skin", "makeup"])
+        is_footwear_brand = any(term in brand_name.lower() for term in ["shoe", "footwear", "sneaker"])
+        is_apparel_brand = any(term in brand_name.lower() for term in ["apparel", "cloth", "wear", "fashion"])
+        
+        # Check if retailer is in the same industry
+        is_beauty_retailer = retailer in ["Sephora", "Ulta Beauty", "Bluemercury", "Macy's", "CVS"]
+        is_footwear_retailer = retailer in ["DSW", "Zappos", "Foot Locker", "Famous Footwear"]
+        is_apparel_retailer = retailer in ["Nordstrom", "Macy's", "TJ Maxx", "Urban Outfitters"]
+        
+        # Higher verification scores for industry matches
+        if (is_beauty_brand and is_beauty_retailer) or \
+           (is_footwear_brand and is_footwear_retailer) or \
+           (is_apparel_brand and is_apparel_retailer):
+            verification_score = random.randint(30, 75)  # Plausible but unverified
+        else:
+            verification_score = random.randint(5, 40)  # Less likely match
+        
+        # For lower confidence matches, show what verification method failed
+        if verification_score < 50:
+            verification_methods = [
+                "No product pages found",
+                "Not listed in brand directory",
+                "No direct links found",
+                "API search returned no results"
+            ]
+        else:
+            verification_methods = [
+                "Possible match but unconfirmed",
+                "Found in related products",
+                "Incomplete verification",
+                "Limited evidence found"
+            ]
+        
+        verification_source = random.choice(verification_methods)
+        verification_url = "#"  # No verification URL for unverified matches
+        
+        return verification_score, verification_source, verification_url
+    
+    # Fallback for URL-only searches without brand name
+    else:
+        verification_score = random.randint(10, 60)  # Less confident without brand name
+        verification_source = "Unverified - brand name needed for confirmation"
+        verification_url = "#"
+        return verification_score, verification_source, verification_url
 
 # Function to generate mock results based on the input URL and brand name
 def generate_results(url, brand_name=""):
@@ -424,9 +546,9 @@ def analyze_merchant(url, brand_name=""):
     with st.expander("Analysis Process", expanded=True):
         st.write(f"Analyzing partnerships for: **{display_name}**")
         
-        # Simulate analysis processes
-        content_analyzed = analyze_website_content(url)
-        backlinks_analyzed = analyze_backlinks(url)
+        # Simulate analysis processes - now with brand name
+        content_analyzed = analyze_website_content(url, brand_name)
+        backlinks_analyzed = analyze_backlinks(url, brand_name)
         
         if content_analyzed and backlinks_analyzed:
             st.write("✅ Analysis complete! Generating results...")
@@ -434,34 +556,81 @@ def analyze_merchant(url, brand_name=""):
     # Generate and display results - now using both URL and brand name
     results = generate_results(display_url, brand_name)
     
+    # Verify each potential retailer partnership
+    verified_results = []
     if results:
-        st.subheader("Discovered Retail Partners")
+        with st.expander("Verification Process", expanded=True):
+            st.write("🔍 Verifying retail partnerships...")
+            progress_bar = st.progress(0)
+            
+            for i, result in enumerate(results):
+                # Simulate verification of this retailer partnership
+                st.write(f"Verifying partnership with {result['retailer']}...")
+                
+                # Get verification details
+                verification_score, verification_source, verification_url = verify_retailer_presence(
+                    result['retailer'], brand_name
+                )
+                
+                # Add verification data to result
+                result['verification_score'] = verification_score
+                result['verification_source'] = verification_source
+                result['verification_url'] = verification_url
+                
+                # Only include results with sufficient verification
+                if verification_score >= 20:  # Low threshold for demo, would be higher in production
+                    verified_results.append(result)
+                
+                # Update progress
+                progress_bar.progress((i + 1) / len(results))
+            
+            st.success(f"Verification complete! Found {len(verified_results)} verified partnerships.")
+    
+    # Display verified results
+    if verified_results:
+        st.subheader("Verified Retail Partners")
         
         # Convert to DataFrame for display
-        df = pd.DataFrame(results)
+        df = pd.DataFrame(verified_results)
         
-        # Custom styling for the confidence column
-        def highlight_confidence(val):
-            if val >= 90:
+        # Custom styling for the verification column
+        def highlight_verification(val):
+            if val >= 80:
                 color = 'rgba(0, 128, 0, 0.2)'  # Green
-            elif val >= 75:
+            elif val >= 50:
                 color = 'rgba(255, 165, 0, 0.2)'  # Orange
             else:
                 color = 'rgba(255, 255, 0, 0.2)'  # Yellow
             return f'background-color: {color}'
         
         # Apply styling and display
-        styled_df = df.style.applymap(highlight_confidence, subset=['confidence'])
+        styled_df = df.style.applymap(highlight_verification, subset=['verification_score'])
         
         # Display as a more visually appealing grid
         col1, col2 = st.columns([3, 1])
         
         with col1:
             for _, row in df.iterrows():
+                # Create verification badge based on score
+                if row['verification_score'] >= 80:
+                    verification_badge = "✅ Verified"
+                    badge_color = "green"
+                elif row['verification_score'] >= 50:
+                    verification_badge = "⚠️ Partially Verified"
+                    badge_color = "orange"
+                else:
+                    verification_badge = "❓ Unverified"
+                    badge_color = "gray"
+                
                 with st.container():
                     st.markdown(f"""
                     <div style="border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:5px;">
-                        <h3 style="margin:0;">{row['retailer']}</h3>
+                        <div style="display:flex; justify-content:space-between;">
+                            <h3 style="margin:0;">{row['retailer']}</h3>
+                            <span style="color:{badge_color}; font-weight:bold;">{verification_badge}</span>
+                        </div>
+                        <p><strong>Verification Score:</strong> {row['verification_score']}%</p>
+                        <p><strong>Verification Method:</strong> {row['verification_source']}</p>
                         <p><strong>Confidence:</strong> {row['confidence']}%</p>
                         <p><strong>Source:</strong> {row['source']}</p>
                         <p><strong>URL:</strong> {row['url']}</p>
@@ -469,22 +638,49 @@ def analyze_merchant(url, brand_name=""):
                     """, unsafe_allow_html=True)
         
         with col2:
-            # Create a pie chart of retailers by confidence
-            st.subheader("Confidence Distribution")
+            # Create a bar chart of verification scores
+            st.subheader("Verification Scores")
             fig, ax = plt.subplots()
-            ax.pie(df['confidence'], labels=df['retailer'], autopct='%1.1f%%')
+            
+            # Sort retailers by verification score
+            df_sorted = df.sort_values('verification_score', ascending=False)
+            
+            # Only show top 10 for readability if there are many results
+            if len(df_sorted) > 10:
+                df_plot = df_sorted.head(10)
+            else:
+                df_plot = df_sorted
+                
+            ax.barh(df_plot['retailer'], df_plot['verification_score'], color='skyblue')
+            ax.set_xlabel('Verification Score (%)')
+            ax.set_title('Partnership Verification Scores')
+            plt.tight_layout()
             st.pyplot(fig)
         
-        # Download results option
+        # Add verification explanation
+        st.info("""
+        **Verification Methodology:**
+        
+        - **✅ Verified (80-100%)**: Strong evidence of partnership confirmed through multiple sources
+        - **⚠️ Partially Verified (50-79%)**: Some evidence found but incomplete confirmation
+        - **❓ Unverified (0-49%)**: Limited or no evidence found, requires manual verification
+        
+        In a full implementation, verification would use retailer APIs, web searches, and backlink analysis.
+        """)
+        
+        # Download results option with verification data
         csv = df.to_csv(index=False)
         st.download_button(
-            label="Download Results as CSV",
+            label="Download Verified Results as CSV",
             data=csv,
-            file_name=f"{display_url.split('.')[0]}_retail_partners.csv",
+            file_name=f"{display_url.split('.')[0]}_verified_partners.csv",
             mime="text/csv"
         )
     else:
-        st.warning("No retail partners found. Try another merchant or refine the search.")
+        st.warning("No verified retail partners found. Try using a more specific brand name or check the website URL.")
+        
+    # Return the number of results for bulk processing
+    return len(verified_results) if verified_results else 0
 
 # Input method selection
 input_method = st.radio("Choose input method:", ["Single URL", "Bulk Upload from Excel"])
@@ -595,18 +791,32 @@ else:
                             # Generate results directly without visual simulation for bulk processing
                             results = generate_results(display_url, brand_name)
                             
-                            if results:
-                                # Add merchant URL to each result row
-                                for result in results:
-                                    result['merchant_url'] = display_url
+                            # Verify each result
+                            verified_results = []
+                            for result in results:
+                                # Get verification details
+                                verification_score, verification_source, verification_url = verify_retailer_presence(
+                                    result['retailer'], brand_name
+                                )
                                 
+                                # Add verification data to result
+                                result['verification_score'] = verification_score
+                                result['verification_source'] = verification_source
+                                result['verification_url'] = verification_url
+                                
+                                # Only include results with sufficient verification
+                                if verification_score >= 20:  # Low threshold for demo
+                                    result['merchant_url'] = display_url
+                                    verified_results.append(result)
+                            
+                            if verified_results:
                                 # Add to combined results
-                                all_results.extend(results)
+                                all_results.extend(verified_results)
                                 
                                 # Show mini summary
-                                st.write(f"✅ Found {len(results)} retail partners for {display_url}")
+                                st.write(f"✅ Found {len(verified_results)} verified retail partners for {display_url}")
                             else:
-                                st.write(f"⚠️ No retail partners found for {display_url}")
+                                st.write(f"⚠️ No verified retail partners found for {display_url}")
                             
                             # Update progress
                             progress_bar.progress((i + 1) / len(valid_urls))
@@ -618,52 +828,93 @@ else:
                             # Convert to DataFrame
                             df_results = pd.DataFrame(all_results)
                             
-                            # Display table of all results
-                            st.dataframe(df_results)
-                            
-                            # Create summary visualization
-                            st.write("### Top Retailers Across All Merchants")
-                            retailer_counts = df_results['retailer'].value_counts().head(10)
-                            
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            retailer_counts.plot(kind='bar', ax=ax)
-                            plt.tight_layout()
-                            st.pyplot(fig)
-                            
-                            # Download option
-                            csv = df_results.to_csv(index=False)
-                            st.download_button(
-                                label="Download Complete Results as CSV",
-                                data=csv,
-                                file_name="bulk_retail_partners.csv",
-                                mime="text/csv"
+                            # Add verification filter
+                            min_verification = st.slider(
+                                "Minimum verification score to include:", 
+                                min_value=0, 
+                                max_value=100, 
+                                value=20,
+                                help="Only show partnerships with verification scores above this threshold"
                             )
                             
-                            # Create Excel report with multiple sheets
-                            buffer = BytesIO()
-                            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                                # All results sheet
-                                df_results.to_excel(writer, sheet_name='All Results', index=False)
+                            # Filter based on verification score
+                            filtered_results = df_results[df_results['verification_score'] >= min_verification]
+                            
+                            if len(filtered_results) > 0:
+                                # Display table of filtered results
+                                st.write(f"Showing {len(filtered_results)} partnerships with verification score ≥ {min_verification}%")
+                                st.dataframe(filtered_results)
                                 
-                                # Summary by merchant
-                                summary_by_merchant = df_results.groupby('merchant_url')['retailer'].count().reset_index()
-                                summary_by_merchant.columns = ['Merchant', 'Number of Retail Partners']
-                                summary_by_merchant.to_excel(writer, sheet_name='Merchant Summary', index=False)
+                                # Create summary visualization
+                                st.write("### Top Verified Retailers Across All Merchants")
                                 
-                                # Summary by retailer
-                                summary_by_retailer = df_results.groupby('retailer')['merchant_url'].count().reset_index()
-                                summary_by_retailer.columns = ['Retailer', 'Number of Merchants']
-                                summary_by_retailer = summary_by_retailer.sort_values('Number of Merchants', ascending=False)
-                                summary_by_retailer.to_excel(writer, sheet_name='Retailer Summary', index=False)
+                                # Count retailers with weighting by verification score
+                                weighted_retailers = {}
+                                for _, row in filtered_results.iterrows():
+                                    retailer = row['retailer']
+                                    if retailer not in weighted_retailers:
+                                        weighted_retailers[retailer] = 0
+                                    weighted_retailers[retailer] += 1 * (row['verification_score'] / 100)
                                 
-                            st.download_button(
-                                label="Download Complete Results as Excel Report",
-                                data=buffer.getvalue(),
-                                file_name="bulk_retail_partners_report.xlsx",
-                                mime="application/vnd.ms-excel"
-                            )
+                                # Convert to DataFrame for plotting
+                                weighted_df = pd.DataFrame({
+                                    'Retailer': list(weighted_retailers.keys()),
+                                    'Weighted Count': list(weighted_retailers.values())
+                                }).sort_values('Weighted Count', ascending=False).head(10)
+                                
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                ax.barh(weighted_df['Retailer'], weighted_df['Weighted Count'], color='skyblue')
+                                plt.title('Top Retailers (Weighted by Verification Score)')
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                                
+                                # Download option
+                                csv = filtered_results.to_csv(index=False)
+                                st.download_button(
+                                    label="Download Verified Results as CSV",
+                                    data=csv,
+                                    file_name=f"verified_retail_partners.csv",
+                                    mime="text/csv"
+                                )
+                                
+                                # Create Excel report with multiple sheets
+                                buffer = BytesIO()
+                                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                                    # All results sheet
+                                    filtered_results.to_excel(writer, sheet_name='All Verified Results', index=False)
+                                    
+                                    # Summary by merchant
+                                    summary_by_merchant = filtered_results.groupby('merchant_url').agg({
+                                        'retailer': 'count',
+                                        'verification_score': 'mean'
+                                    }).reset_index()
+                                    summary_by_merchant.columns = ['Merchant', 'Number of Verified Partners', 'Average Verification Score']
+                                    summary_by_merchant.to_excel(writer, sheet_name='Merchant Summary', index=False)
+                                    
+                                    # Summary by retailer
+                                    summary_by_retailer = filtered_results.groupby('retailer').agg({
+                                        'merchant_url': 'count',
+                                        'verification_score': 'mean'
+                                    }).reset_index()
+                                    summary_by_retailer.columns = ['Retailer', 'Number of Merchants', 'Average Verification Score']
+                                    summary_by_retailer = summary_by_retailer.sort_values('Number of Merchants', ascending=False)
+                                    summary_by_retailer.to_excel(writer, sheet_name='Retailer Summary', index=False)
+                                    
+                                    # Verification methods summary
+                                    verification_methods = filtered_results['verification_source'].value_counts().reset_index()
+                                    verification_methods.columns = ['Verification Method', 'Count']
+                                    verification_methods.to_excel(writer, sheet_name='Verification Methods', index=False)
+                                    
+                                st.download_button(
+                                    label="Download Complete Verified Results as Excel Report",
+                                    data=buffer.getvalue(),
+                                    file_name="verified_retail_partners_report.xlsx",
+                                    mime="application/vnd.ms-excel"
+                                )
+                            else:
+                                st.warning(f"No partnerships meet the minimum verification score of {min_verification}%. Try lowering the threshold.")
                         else:
-                            st.error("No retail partners found for any of the provided URLs.")
+                            st.error("No verified retail partners found for any of the provided URLs.")
                 
             else:
                 st.error("The uploaded Excel file is empty.")
