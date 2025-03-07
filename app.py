@@ -915,34 +915,34 @@ else:
                             # Display combined results if any
                             if all_results:
                         
-                        # Display combined results if any
-                        if all_results:
-                            st.write("## Combined Results Summary")
-                            
-                            # Convert to DataFrame
-                            df_results = pd.DataFrame(all_results)
-                            
-                            # Display table of all results (all are 90%+ verified)
-                            st.write("All results shown have 90%+ verification confidence")
-                            st.dataframe(df_results)
-                            
-                            # Create summary visualization
-                            st.write("### Top Verified Retailers Across All Merchants")
-                            retailer_counts = df_results['retailer'].value_counts().head(10)
-                            
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            retailer_counts.plot(kind='bar', ax=ax, color='green')
-                            plt.tight_layout()
-                            st.pyplot(fig)
-                            
-                            # Download option
-                            csv = df_results.to_csv(index=False)
-                            st.download_button(
-                                label="Download Verified Results as CSV",
-                                data=csv,
-                                file_name=f"highly_verified_retail_partners.csv",
-                                mime="text/csv"
-                            )
+                            # Display combined results if any
+                            if all_results:
+                                st.write("## Combined Results Summary")
+                                
+                                # Convert to DataFrame
+                                df_results = pd.DataFrame(all_results)
+                                
+                                # Display table of all results (all are 90%+ verified)
+                                st.write("All results shown have 90%+ verification confidence")
+                                st.dataframe(df_results)
+                                
+                                # Create summary visualization
+                                st.write("### Top Verified Retailers Across All Merchants")
+                                retailer_counts = df_results['retailer'].value_counts().head(10)
+                                
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                retailer_counts.plot(kind='bar', ax=ax, color='green')
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                                
+                                # Download option
+                                csv = df_results.to_csv(index=False)
+                                st.download_button(
+                                    label="Download Verified Results as CSV",
+                                    data=csv,
+                                    file_name=f"highly_verified_retail_partners.csv",
+                                    mime="text/csv"
+                                )
                             
                             # Create Excel report with multiple sheets
                             buffer = BytesIO()
