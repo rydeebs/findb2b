@@ -558,175 +558,82 @@ def analyze_merchant(url, brand_name=""):
     results = generate_results(display_url, brand_name)
     
     # Verify each potential retailer partnership
-verified_results = []
-all_results_with_verification = []
-if results:
-    with st.expander("Verification Process", expanded=True):
-        st.write("🔍 Verifying retail partnerships...")
-        progress_bar = st.progress(0)
-        
-        for i, result in enumerate(results):
-            # Simulate verification of this retailer partnership
-            st.write(f"Verifying partnership with {result['retailer']}...")
+    verified_results = []
+    all_results_with_verification = []
+    if results:
+        with st.expander("Verification Process", expanded=True):
+            st.write("🔍 Verifying retail partnerships...")
+            progress_bar = st.progress(0)
             
-            # Get verification details
-            verification_score, verification_source, verification_url = verify_retailer_presence(
-                result['retailer'], brand_name
-            )
+            for i, result in enumerate(results):
+                # Simulate verification of this retailer partnership
+                st.write(f"Verifying partnership with {result['retailer']}...")
+                
+                # Get verification details
+                verification_score, verification_source, verification_url = verify_retailer_presence(
+                    result['retailer'], brand_name
+                )
+                
+                # Add verification data to result
+                result['verification_score'] = verification_score
+                result['verification_source'] = verification_source
+                result['verification_url'] = verification_url
+                
+                # Add all results to the list for display
+                all_results_with_verification.append(result)
+                
+                # Track highly verified results separately
+                if verification_score >= 90:
+                    verified_results.append(result)
+                
+                # Update progress
+                progress_bar.progress((i + 1) / len(results))
             
-            # Add verification data to result
-            result['verification_score'] = verification_score
-            result['verification_source'] = verification_source
-            result['verification_url'] = verification_url
-            
-            # Add all results to the list for display
-            all_results_with_verification.append(result)
-            
-            # Track highly verified results separately
-            if verification_score >= 90:
-                verified_results.append(result)
-            
-            # Update progress
-            progress_bar.progress((i + 1) / len(results))
-        
-        st.success(f"Verification complete! Found {len(verified_results)} highly verified partnerships out of {len(all_results_with_verification)} total potential retailers.")
-
-# 2. Then modify the display section from:
-
-# Display verified results
-if verified_results:
-    st.subheader("Verified Retail Partners (90%+ Confidence)")
+            st.success(f"Verification complete! Found {len(verified_results)} highly verified partnerships out of {len(all_results_with_verification)} total potential retailers.")
     
-    # Convert to DataFrame for display
-    df = pd.DataFrame(verified_results)
-    
-    # [rest of display code]
-    
-else:
-    st.warning("No highly verified retail partners found (90%+ confidence). Try using a more specific brand name or check the website URL.")
-
-# TO:
-
-# Display all results with verification info
-if all_results_with_verification:
-    st.subheader("All Potential Retail Partners")
-    
-    # Convert to DataFrame for display
-    df = pd.DataFrame(all_results_with_verification)
-    
-    # Sort by verification score (highest first)
-    df = df.sort_values('verification_score', ascending=False)
-    
-    # Display as a more visually appealing grid
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        for _, row in df.iterrows():
-            # Create verification badge based on score
-            if row['verification_score'] >= 90:
-                verification_badge = "✅ Verified"
-                badge_color = "green"
-            elif row['verification_score'] >= 50:
-                verification_badge = "⚠️ Partially Verified"
-                badge_color = "orange"
-            else:
-                verification_badge = "❓ Low Confidence"
-                badge_color = "gray"
-            
-            with st.container():
-                st.markdown(f"""
-                <div style="border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:5px;">
-                    <div style="display:flex; justify-content:space-between;">
-                        <h3 style="margin:0;">{row['retailer']}</h3>
-                        <span style="color:{badge_color}; font-weight:bold;">{verification_badge}</span>
-                    </div>
-                    <p><strong>Verification Score:</strong> {row['verification_score']}%</p>
-                    <p><strong>Verification Method:</strong> {row['verification_source']}</p>
-                    <p><strong>Confidence:</strong> {row['confidence']}%</p>
-                    <p><strong>Source:</strong> {row['source']}</p>
-                    <p><strong>URL:</strong> {row['url']}</p>
-                </div>
-                """, unsafe_allow_html=True)
-    
-    with col2:
-        # Create a bar chart of verification scores for top retailers
-        st.subheader("Verification Scores")
-        fig, ax = plt.subplots()
-        
-        # Sort retailers by verification score
-        df_sorted = df.sort_values('verification_score', ascending=False)
-        
-        # Only show top 10 for readability if there are many results
-        if len(df_sorted) > 10:
-            df_plot = df_sorted.head(10)
-        else:
-            df_plot = df_sorted
-            
-        ax.barh(df_plot['retailer'], df_plot['verification_score'], color='skyblue')
-        ax.set_xlabel('Verification Score (%)')
-        ax.set_title('Partnership Verification Scores')
-        plt.tight_layout()
-        st.pyplot(fig)
-    
-    # Add verification explanation
-    st.info("""
-    **Verification Methodology:**
-    
-    - **✅ Verified (90-100%)**: Strong evidence of partnership confirmed through multiple sources
-    - **⚠️ Partially Verified (50-89%)**: Some evidence found but incomplete confirmation
-    - **❓ Low Confidence (0-49%)**: Limited or no evidence found, requires manual verification
-    
-    In a full implementation, verification would use retailer APIs, web searches, and backlink analysis.
-    """)
-    
-    # Add option to filter to only high confidence
-    if st.checkbox("Show only highly verified retailers (90%+ confidence)"):
-        st.subheader("Highly Verified Retail Partners Only")
-        df_verified = df[df['verification_score'] >= 90]
-        if len(df_verified) > 0:
-            st.dataframe(df_verified)
-        else:
-            st.warning("No highly verified partnerships found.")
-    
-    # Download results option with verification data for all results
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="Download Complete Results as CSV",
-        data=csv,
-        file_name=f"{display_url.split('.')[0]}_all_partners.csv",
-        mime="text/csv"
-    )
-else:
-    st.warning("No potential retail partners found. Try using a more specific brand name or check the website URL.")
-
-    
-    # Display verified results
-    if verified_results:
-        st.subheader("Verified Retail Partners (90%+ Confidence)")
+    # Display all results with verification info
+    if all_results_with_verification:
+        st.subheader("All Potential Retail Partners")
         
         # Convert to DataFrame for display
-        df = pd.DataFrame(verified_results)
+        df = pd.DataFrame(all_results_with_verification)
+        
+        # Sort by verification score (highest first)
+        df = df.sort_values('verification_score', ascending=False)
         
         # Display as a more visually appealing grid
         col1, col2 = st.columns([3, 1])
         
         with col1:
             for _, row in df.iterrows():
+                # Create verification badge based on score
+                if row['verification_score'] >= 90:
+                    verification_badge = "✅ Verified"
+                    badge_color = "green"
+                elif row['verification_score'] >= 50:
+                    verification_badge = "⚠️ Partially Verified"
+                    badge_color = "orange"
+                else:
+                    verification_badge = "❓ Low Confidence"
+                    badge_color = "gray"
+                
                 with st.container():
                     st.markdown(f"""
                     <div style="border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:5px;">
                         <div style="display:flex; justify-content:space-between;">
                             <h3 style="margin:0;">{row['retailer']}</h3>
-                            <span style="color:green; font-weight:bold;">✅ Verified</span>
+                            <span style="color:{badge_color}; font-weight:bold;">{verification_badge}</span>
                         </div>
                         <p><strong>Verification Score:</strong> {row['verification_score']}%</p>
                         <p><strong>Verification Method:</strong> {row['verification_source']}</p>
+                        <p><strong>Confidence:</strong> {row['confidence']}%</p>
+                        <p><strong>Source:</strong> {row['source']}</p>
                         <p><strong>URL:</strong> {row['url']}</p>
                     </div>
                     """, unsafe_allow_html=True)
         
         with col2:
-            # Create a bar chart of verification scores
+            # Create a bar chart of verification scores for top retailers
             st.subheader("Verification Scores")
             fig, ax = plt.subplots()
             
@@ -739,7 +646,7 @@ else:
             else:
                 df_plot = df_sorted
                 
-            ax.barh(df_plot['retailer'], df_plot['verification_score'], color='green')
+            ax.barh(df_plot['retailer'], df_plot['verification_score'], color='skyblue')
             ax.set_xlabel('Verification Score (%)')
             ax.set_title('Partnership Verification Scores')
             plt.tight_layout()
@@ -747,28 +654,35 @@ else:
         
         # Add verification explanation
         st.info("""
-        **Verification Methods:**
+        **Verification Methodology:**
         
-        In a full implementation, we verify retail partnerships using:
+        - **✅ Verified (90-100%)**: Strong evidence of partnership confirmed through multiple sources
+        - **⚠️ Partially Verified (50-89%)**: Some evidence found but incomplete confirmation
+        - **❓ Low Confidence (0-49%)**: Limited or no evidence found, requires manual verification
         
-        1. **Direct Website Evidence**: Identifying "Where to Buy" pages on brand websites
-        2. **Retailer Confirmation**: Finding the brand in retailer's brand directory
-        3. **Backlink Analysis**: Analyzing quality backlinks between brand and retailer
-        4. **Affiliate Link Detection**: Identifying affiliate network connections
-        5. **API Verification**: Querying retailer APIs for product listings
+        In a full implementation, verification would use retailer APIs, web searches, and backlink analysis.
         """)
         
-        # Download results option with verification data
+        # Add option to filter to only high confidence
+        if st.checkbox("Show only highly verified retailers (90%+ confidence)"):
+            st.subheader("Highly Verified Retail Partners Only")
+            df_verified = df[df['verification_score'] >= 90]
+            if len(df_verified) > 0:
+                st.dataframe(df_verified)
+            else:
+                st.warning("No highly verified partnerships found.")
+        
+        # Download results option with verification data for all results
         csv = df.to_csv(index=False)
         st.download_button(
-            label="Download Verified Results as CSV",
+            label="Download Complete Results as CSV",
             data=csv,
-            file_name=f"{display_url.split('.')[0]}_verified_partners.csv",
+            file_name=f"{display_url.split('.')[0]}_all_partners.csv",
             mime="text/csv"
         )
     else:
-        st.warning("No highly verified retail partners found (90%+ confidence). Try using a more specific brand name or check the website URL.")
-        
+        st.warning("No potential retail partners found. Try using a more specific brand name or check the website URL.")
+    
     # Return the number of results for bulk processing
     return len(verified_results) if verified_results else 0
 
