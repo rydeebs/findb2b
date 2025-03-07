@@ -895,17 +895,25 @@ else:
                                 result['verification_source'] = verification_source
                                 result['verification_url'] = verification_url
                                 result['merchant_url'] = display_url
-                                    
+                                
                                 # Add all results
                                 all_verified_results.append(result)
-                                    
+                                
                                 # Track high confidence separately
                                 if verification_score >= 90:
-                                      verified_results.append(result)
-                                
-                                if all_verified_results:
+                                    verified_results.append(result)
+                            
+                            if all_verified_results:
                                 # Add to combined results
-                                all_results.extend(all_verified_results))
+                                all_results.extend(all_verified_results)
+                                
+                                # Show mini summary
+                                st.write(f"✅ Found {len(all_verified_results)} retail partners for {display_url} ({len(verified_results)} highly verified)")
+                            else:
+                                st.write(f"⚠️ No retail partners found for {display_url}")
+                            
+                            # Display combined results if any
+                            if all_results:
                         
                         # Display combined results if any
                         if all_results:
