@@ -47,159 +47,180 @@ with st.sidebar:
     - Allbirds (allbirds.com)
     """)
 
-# Input method selection
-input_method = st.radio("Choose input method:", ["Single URL", "Bulk Upload from Excel"])
-
-if input_method == "Single URL":
-    # Single URL input
-    url_input = st.text_input("Enter merchant website URL:", placeholder="e.g., trysnow.com")
-    
-    # Run the analysis when a button is clicked for single URL
-    if st.button("Find B2B Partners for Single URL"):
-        analyze_merchant(url_input)
-else:
-    # Bulk upload from Excel
-    st.write("### Upload Excel file with merchant URLs")
-    
-    uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
-    
-    if uploaded_file is not None:
-        # Load the Excel file
-        try:
-            df_excel = pd.read_excel(uploaded_file)
-            
-            # Display preview of the uploaded file
-            st.write("Preview of uploaded Excel file:")
-            st.dataframe(df_excel.head())
-            
-            # Let user select the column containing URLs
-            if len(df_excel.columns) > 0:
-                url_column = st.selectbox(
-                    "Select the column containing merchant URLs:", 
-                    options=df_excel.columns
-                )
-                
-                # Process in batches to avoid overloading
-                max_urls = st.slider("Maximum number of URLs to process", 
-                                    min_value=1, max_value=50, value=10)
-                
-                # Run bulk analysis
-                if st.button("Find B2B Partners for All URLs"):
-                    # Filter out empty URLs
-                    valid_urls = df_excel[url_column].dropna().tolist()[:max_urls]
-                    
-                    if not valid_urls:
-                        st.error("No valid URLs found in the selected column.")
-                    else:
-                        st.write(f"Processing {len(valid_urls)} URLs...")
-                        
-                        # Create container for results
-                        all_results = []
-                        
-                        # Progress bar for overall processing
-                        progress_bar = st.progress(0)
-                        
-                        # Process each URL
-                        for i, url in enumerate(valid_urls):
-                            st.write(f"### Processing URL {i+1}/{len(valid_urls)}: {url}")
-                            
-                            # Clean the URL if needed
-                            if not str(url).startswith('http'):
-                                url = 'https://' + str(url)
-                            
-                            # Format for display
-                            display_url = str(url).replace('https://', '').replace('http://', '').rstrip('/')
-                            
-                            # Quick analysis for bulk processing
-                            st.write(f"Analyzing partnerships for: **{display_url}**")
-                            
-                            # Generate results directly without visual simulation for bulk processing
-                            results = generate_results(display_url)
-                            
-                            if results:
-                                # Add merchant URL to each result row
-                                for result in results:
-                                    result['merchant_url'] = display_url
-                                
-                                # Add to combined results
-                                all_results.extend(results)
-                                
-                                # Show mini summary
-                                st.write(f"✅ Found {len(results)} retail partners for {display_url}")
-                            else:
-                                st.write(f"⚠️ No retail partners found for {display_url}")
-                            
-                            # Update progress
-                            progress_bar.progress((i + 1) / len(valid_urls))
-                        
-                        # Display combined results if any
-                        if all_results:
-                            st.write("## Combined Results Summary")
-                            
-                            # Convert to DataFrame
-                            df_results = pd.DataFrame(all_results)
-                            
-                            # Display table of all results
-                            st.dataframe(df_results)
-                            
-                            # Create summary visualization
-                            st.write("### Top Retailers Across All Merchants")
-                            retailer_counts = df_results['retailer'].value_counts().head(10)
-                            
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            retailer_counts.plot(kind='bar', ax=ax)
-                            plt.tight_layout()
-                            st.pyplot(fig)
-                            
-                            # Download option
-                            csv = df_results.to_csv(index=False)
-                            st.download_button(
-                                label="Download Complete Results as CSV",
-                                data=csv,
-                                file_name="bulk_retail_partners.csv",
-                                mime="text/csv"
-                            )
-                            
-                            # Create Excel report with multiple sheets
-                            buffer = BytesIO()
-                            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                                # All results sheet
-                                df_results.to_excel(writer, sheet_name='All Results', index=False)
-                                
-                                # Summary by merchant
-                                summary_by_merchant = df_results.groupby('merchant_url')['retailer'].count().reset_index()
-                                summary_by_merchant.columns = ['Merchant', 'Number of Retail Partners']
-                                summary_by_merchant.to_excel(writer, sheet_name='Merchant Summary', index=False)
-                                
-                                # Summary by retailer
-                                summary_by_retailer = df_results.groupby('retailer')['merchant_url'].count().reset_index()
-                                summary_by_retailer.columns = ['Retailer', 'Number of Merchants']
-                                summary_by_retailer = summary_by_retailer.sort_values('Number of Merchants', ascending=False)
-                                summary_by_retailer.to_excel(writer, sheet_name='Retailer Summary', index=False)
-                                
-                            st.download_button(
-                                label="Download Complete Results as Excel Report",
-                                data=buffer.getvalue(),
-                                file_name="bulk_retail_partners_report.xlsx",
-                                mime="application/vnd.ms-excel"
-                            )
-                        else:
-                            st.error("No retail partners found for any of the provided URLs.")
-                
-            else:
-                st.error("The uploaded Excel file is empty.")
-        
-        except Exception as e:
-            st.error(f"Error processing the Excel file: {str(e)}")
-            st.write("Please ensure your file is a valid Excel file with a column containing URLs.")
-
-# Sample retailer database (would be more comprehensive in a full implementation)
+# Comprehensive retailer database 
 major_retailers = [
-    "Amazon", "Target", "Walmart", "Nordstrom", "Sephora", "Ulta Beauty", 
-    "Best Buy", "Macy's", "Kohl's", "Costco", "CVS", "Walgreens", "REI", 
-    "Dick's Sporting Goods", "Home Depot", "Lowe's", "Wayfair", "Bed Bath & Beyond",
-    "Bloomingdale's", "Neiman Marcus", "Saks Fifth Avenue", "Anthropologie",
-    "Urban Outfitters", "Crate & Barrel", "West Elm", "Pottery Barn"
+    "AAFES- Domestic",
+    "Academy Sports and Outdoors",
+    "Ace Hardware",
+    "Albertsons",
+    "Altitude (Canada)",
+    "Amazon Advantage",
+    "Amazon Seller Central",
+    "Amazon Vendor Central",
+    "Anaconda Canada",
+    "Anthropologie",
+    "ASOS",
+    "Babylist",
+    "Backcountry",
+    "Barnes and Noble",
+    "Bass Pro Shop/Cabela's",
+    "Bass Pro Shop/Cabela's (Canada)",
+    "Bealls",
+    "Bed Bath & Beyond",
+    "Belk",
+    "Best Buy",
+    "BevMo!",
+    "Big Lots",
+    "Big Rock Sports",
+    "Bloomingdales",
+    "Bluemercury",
+    "Boscov's",
+    "Burlington",
+    "Buc-cees",
+    "C&S Wholesalers",
+    "Canadian Tire",
+    "Cardinal Health",
+    "Chatters Canada",
+    "Chewy",
+    "Coast Guard Exchange",
+    "Container Store",
+    "Costco",
+    "Coupang",
+    "Crate & Barrel",
+    "CVS",
+    "Dicks Sporting Goods / Field and Stream",
+    "Do It Best",
+    "Dollar General",
+    "Dollar Tree/ Family Dollar",
+    "Dot Food",
+    "Dillards",
+    "Essendant",
+    "Fabfitfun (FFF)",
+    "Fanatics",
+    "FAO Schwarz",
+    "Fastenal",
+    "FleetFarm",
+    "FLG",
+    "Five Below",
+    "FootLocker",
+    "Francesca's",
+    "Fullscript",
+    "Fred Meyer (Kroger)",
+    "Giant Eagle",
+    "GNC",
+    "Golf Town",
+    "GOOP",
+    "GoPuff",
+    "Gordon Food Services",
+    "Grainger",
+    "Grove Collaborative",
+    "Hamrick's",
+    "Harris Teeter (Kroger)",
+    "HEB",
+    "Holt Renfrew (Canada)",
+    "Home Depot",
+    "HSN",
+    "HyVee",
+    "iHerb",
+    "Indigo Canada",
+    "Ingles",
+    "Ingram Micro",
+    "K&G",
+    "KeHE",
+    "Keystone Automotive",
+    "Kohls",
+    "Lids",
+    "Lifetime / Business Impact Group (BIG)",
+    "LOBLAW",
+    "Lord & Taylor",
+    "Lowe's",
+    "Lynco",
+    "Macys",
+    "Marine Corps Exchange (MCX) Domenstic",
+    "Mark and Graham (Williams Sonoma)",
+    "Mark's",
+    "Marshall Retail Group (InMotion Entertainment)",
+    "MCKesson",
+    "McKesson Canada",
+    "Mclane",
+    "MEC",
+    "MECCA Brands International",
+    "Meijer",
+    "Menards",
+    "Napa Auto Parts",
+    "Natural Grocers",
+    "Neiman Marcus",
+    "Nexcom",
+    "Nordstrom",
+    "Nordstrom Canada",
+    "Nordstrom Rack",
+    "Office Depot",
+    "Pet Supermarket",
+    "Pet Supply Plus",
+    "Pet Valu (CANADA)",
+    "Petco",
+    "Petsmart",
+    "PGA Tour Superstore",
+    "Pottery Barn (Williams Sonoma)",
+    "Pottery Barn Kids (Williams Sonoma)",
+    "QVC",
+    "RCI (Sun & Ski Sports)",
+    "REI",
+    "Rejuvenation (Williams Sonoma)",
+    "Rite Aid",
+    "Roadrunner Sports",
+    "Ross",
+    "Rural King",
+    "Saks Fifth Avenue",
+    "Saks Off Fifth",
+    "Sally Beauty",
+    "Sams Club",
+    "Scheels",
+    "Schnuck",
+    "Sephora (U.S. DOMESTIC ONLY!!!)",
+    "Shoe Sensation",
+    "ShopBob (US)",
+    "Shoppers Drug Market- Canada",
+    "Sierra (TJX)",
+    "Sports Endeavours",
+    "Sprouts - Direct to Store",
+    "Sporting Life",
+    "Staples",
+    "Starboard cruise",
+    "Stitch Fix",
+    "Summit Racing",
+    "Super Retail Group",
+    "Superior Communication",
+    "Sur La Table",
+    "Target",
+    "The Iconic",
+    "The Paper Store",
+    "Threshold Enterprises",
+    "Thrive Market",
+    "TJ Maxx",
+    "Tractor Supply",
+    "True Value",
+    "Ulta",
+    "UNFI",
+    "Urban Outfitters",
+    "US Foods",
+    "Veterans Canteen Services (VCS)",
+    "Vistar",
+    "Vitamin Shoppe",
+    "Von Maur",
+    "Wakefern",
+    "Walgreens",
+    "Walmart",
+    "Walmart DSDC- Pack by Store",
+    "Walmart (Canada)",
+    "Wegmans",
+    "Well.ca",
+    "West Elm (Williams Sonoma)",
+    "Williams Sonoma",
+    "Whole Foods",
+    "World Wide Golf",
+    "Zappos",
+    "Zulily"
 ]
 
 # Function to simulate website content analysis
@@ -367,6 +388,152 @@ def analyze_merchant(url):
     else:
         st.warning("No retail partners found. Try another merchant or refine the search.")
 
+# Input method selection
+input_method = st.radio("Choose input method:", ["Single URL", "Bulk Upload from Excel"])
+
+if input_method == "Single URL":
+    # Single URL input
+    url_input = st.text_input("Enter merchant website URL:", placeholder="e.g., trysnow.com")
+    
+    # Run the analysis when a button is clicked for single URL
+    if st.button("Find B2B Partners for Single URL"):
+        analyze_merchant(url_input)
+else:
+    # Bulk upload from Excel
+    st.write("### Upload Excel file with merchant URLs")
+    
+    uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
+    
+    if uploaded_file is not None:
+        # Load the Excel file
+        try:
+            df_excel = pd.read_excel(uploaded_file)
+            
+            # Display preview of the uploaded file
+            st.write("Preview of uploaded Excel file:")
+            st.dataframe(df_excel.head())
+            
+            # Let user select the column containing URLs
+            if len(df_excel.columns) > 0:
+                url_column = st.selectbox(
+                    "Select the column containing merchant URLs:", 
+                    options=df_excel.columns
+                )
+                
+                # Process in batches to avoid overloading
+                max_urls = st.slider("Maximum number of URLs to process", 
+                                    min_value=1, max_value=50, value=10)
+                
+                # Run bulk analysis
+                if st.button("Find B2B Partners for All URLs"):
+                    # Filter out empty URLs
+                    valid_urls = df_excel[url_column].dropna().tolist()[:max_urls]
+                    
+                    if not valid_urls:
+                        st.error("No valid URLs found in the selected column.")
+                    else:
+                        st.write(f"Processing {len(valid_urls)} URLs...")
+                        
+                        # Create container for results
+                        all_results = []
+                        
+                        # Progress bar for overall processing
+                        progress_bar = st.progress(0)
+                        
+                        # Process each URL
+                        for i, url in enumerate(valid_urls):
+                            st.write(f"### Processing URL {i+1}/{len(valid_urls)}: {url}")
+                            
+                            # Clean the URL if needed
+                            if not str(url).startswith('http'):
+                                url = 'https://' + str(url)
+                            
+                            # Format for display
+                            display_url = str(url).replace('https://', '').replace('http://', '').rstrip('/')
+                            
+                            # Quick analysis for bulk processing
+                            st.write(f"Analyzing partnerships for: **{display_url}**")
+                            
+                            # Generate results directly without visual simulation for bulk processing
+                            results = generate_results(display_url)
+                            
+                            if results:
+                                # Add merchant URL to each result row
+                                for result in results:
+                                    result['merchant_url'] = display_url
+                                
+                                # Add to combined results
+                                all_results.extend(results)
+                                
+                                # Show mini summary
+                                st.write(f"✅ Found {len(results)} retail partners for {display_url}")
+                            else:
+                                st.write(f"⚠️ No retail partners found for {display_url}")
+                            
+                            # Update progress
+                            progress_bar.progress((i + 1) / len(valid_urls))
+                        
+                        # Display combined results if any
+                        if all_results:
+                            st.write("## Combined Results Summary")
+                            
+                            # Convert to DataFrame
+                            df_results = pd.DataFrame(all_results)
+                            
+                            # Display table of all results
+                            st.dataframe(df_results)
+                            
+                            # Create summary visualization
+                            st.write("### Top Retailers Across All Merchants")
+                            retailer_counts = df_results['retailer'].value_counts().head(10)
+                            
+                            fig, ax = plt.subplots(figsize=(10, 6))
+                            retailer_counts.plot(kind='bar', ax=ax)
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            
+                            # Download option
+                            csv = df_results.to_csv(index=False)
+                            st.download_button(
+                                label="Download Complete Results as CSV",
+                                data=csv,
+                                file_name="bulk_retail_partners.csv",
+                                mime="text/csv"
+                            )
+                            
+                            # Create Excel report with multiple sheets
+                            buffer = BytesIO()
+                            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                                # All results sheet
+                                df_results.to_excel(writer, sheet_name='All Results', index=False)
+                                
+                                # Summary by merchant
+                                summary_by_merchant = df_results.groupby('merchant_url')['retailer'].count().reset_index()
+                                summary_by_merchant.columns = ['Merchant', 'Number of Retail Partners']
+                                summary_by_merchant.to_excel(writer, sheet_name='Merchant Summary', index=False)
+                                
+                                # Summary by retailer
+                                summary_by_retailer = df_results.groupby('retailer')['merchant_url'].count().reset_index()
+                                summary_by_retailer.columns = ['Retailer', 'Number of Merchants']
+                                summary_by_retailer = summary_by_retailer.sort_values('Number of Merchants', ascending=False)
+                                summary_by_retailer.to_excel(writer, sheet_name='Retailer Summary', index=False)
+                                
+                            st.download_button(
+                                label="Download Complete Results as Excel Report",
+                                data=buffer.getvalue(),
+                                file_name="bulk_retail_partners_report.xlsx",
+                                mime="application/vnd.ms-excel"
+                            )
+                        else:
+                            st.error("No retail partners found for any of the provided URLs.")
+                
+            else:
+                st.error("The uploaded Excel file is empty.")
+        
+        except Exception as e:
+            st.error(f"Error processing the Excel file: {str(e)}")
+            st.write("Please ensure your file is a valid Excel file with a column containing URLs.")
+
 # Additional features section
 with st.expander("Additional Features (Premium)", expanded=False):
     st.markdown("""
@@ -382,8 +549,6 @@ with st.expander("Additional Features (Premium)", expanded=False):
     
     These features would require integration with specialized APIs and services.
     """)
-
-# The buttons have been moved to their respective sections above
 
 # Footer
 st.markdown("---")
