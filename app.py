@@ -578,8 +578,8 @@ def analyze_merchant(url, brand_name=""):
                 result['verification_source'] = verification_source
                 result['verification_url'] = verification_url
                 
-                # Only include results with high verification score (90%+)
-                if verification_score >= 90:
+                # Only include results with high verification score (50%+)
+                if verification_score >= 50:
                     verified_results.append(result)
                 
                 # Update progress
