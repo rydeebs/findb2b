@@ -913,7 +913,7 @@ else:
                                 st.write(f"⚠️ No retail partners found for {display_url}")
                             
                             # Display combined results if any
-                            if all_results:
+                                if all_results:
                         
                             # Display combined results if any
                             if all_results:
