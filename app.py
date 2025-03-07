@@ -33,7 +33,7 @@ with st.sidebar:
        - "Where to buy" or "Store locator" pages
        - Press releases mentioning partnerships
        - Backlink analysis from major retailers
-    3. Results show discovered retail partners with confidence scores
+    3. Results show verified retail partners with high confidence scores (90%+)
     
     **Note:** In a full implementation, this would connect to external APIs 
     for comprehensive data analysis.
@@ -362,48 +362,6 @@ def verify_retailer_presence(retailer, brand_name):
         # We're only returning results with 90%+ confidence, so most of these won't be shown
         verification_source = "Insufficient verification evidence"
         verification_url = "#"
-        
-        return verification_score, verification_source, verification_url
-    
-    # Fallback for URL-only searches without brand name
-    else:
-        verification_score = random.randint(10, 60)  # Less confident without brand name
-        verification_source = "Unverified - brand name needed for confirmation"
-        verification_url = "#"
-        return verification_score, verification_source, verification_url ["shoe", "footwear", "sneaker"])
-        is_apparel_brand = any(term in brand_name.lower() for term in ["apparel", "cloth", "wear", "fashion"])
-        
-        # Check if retailer is in the same industry
-        is_beauty_retailer = retailer in ["Sephora", "Ulta Beauty", "Bluemercury", "Macy's", "CVS"]
-        is_footwear_retailer = retailer in ["DSW", "Zappos", "Foot Locker", "Famous Footwear"]
-        is_apparel_retailer = retailer in ["Nordstrom", "Macy's", "TJ Maxx", "Urban Outfitters"]
-        
-        # Higher verification scores for industry matches
-        if (is_beauty_brand and is_beauty_retailer) or \
-           (is_footwear_brand and is_footwear_retailer) or \
-           (is_apparel_brand and is_apparel_retailer):
-            verification_score = random.randint(30, 75)  # Plausible but unverified
-        else:
-            verification_score = random.randint(5, 40)  # Less likely match
-        
-        # For lower confidence matches, show what verification method failed
-        if verification_score < 50:
-            verification_methods = [
-                "No product pages found",
-                "Not listed in brand directory",
-                "No direct links found",
-                "API search returned no results"
-            ]
-        else:
-            verification_methods = [
-                "Possible match but unconfirmed",
-                "Found in related products",
-                "Incomplete verification",
-                "Limited evidence found"
-            ]
-        
-        verification_source = random.choice(verification_methods)
-        verification_url = "#"  # No verification URL for unverified matches
         
         return verification_score, verification_source, verification_url
     
@@ -913,26 +871,10 @@ else:
             st.error(f"Error processing the Excel file: {str(e)}")
             st.write("Please ensure your file is a valid Excel file with a column containing URLs.")
 
-# Additional features section
-with st.expander("Additional Features (Premium)", expanded=False):
-    st.markdown("""
-    ### Premium Features
-    
-    In a full implementation, these additional features would be available:
-    
-    - **Historical Partnership Tracking**: Monitor how partnerships change over time
-    - **Competitor Analysis**: See which retailers your competitors work with
-    - **Market Penetration Insights**: Identify untapped retail opportunities
-    - **Automated Monitoring**: Get alerts when new partnerships are detected
-    - **Detailed Partnership Reports**: Export comprehensive reports for presentations
-    
-    These features would require integration with specialized APIs and services.
-    """)
-
-# Footer
+# Footer with simple information
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center;">
-    <p>Developed for business development representatives to accelerate partnership discovery</p>
+    <p>Developed for business development representatives to discover verified retail partnerships</p>
 </div>
 """, unsafe_allow_html=True)
