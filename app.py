@@ -10,6 +10,7 @@ import time
 import io
 import random
 import json
+import datetime
 
 # Set up page configuration
 st.set_page_config(
@@ -668,29 +669,29 @@ with tab3:
             required_cols = ['Brand', 'Retailer']
             
             # If columns with exact names don't exist, try to map
-                if not all(col in pairs_df.columns for col in required_cols):
-                    # Look for Brand-like columns
-                    brand_cols = [col for col in pairs_df.columns if 'brand' in col.lower()]
-                    retailer_cols = [col for col in pairs_df.columns if any(kw in col.lower() for kw in ['retailer', 'url', 'website', 'site', 'domain'])]
-                    
-                    col_mapping = {}
-                    
-                    if brand_cols:
-                        brand_col = st.selectbox("Select the column containing brand names:", brand_cols, key="bulk_pairs_brand_col")
-                        col_mapping['Brand'] = brand_col
-                    else:
-                        brand_col = st.selectbox("Select the column containing brand names:", pairs_df.columns, key="bulk_pairs_any_brand")
-                        col_mapping['Brand'] = brand_col
-                    
-                    if retailer_cols:
-                        retailer_col = st.selectbox("Select the column containing retailer URLs:", retailer_cols, key="bulk_pairs_ret_col")
-                        col_mapping['Retailer'] = retailer_col
-                    else:
-                        retailer_col = st.selectbox("Select the column containing retailer URLs:", pairs_df.columns, key="bulk_pairs_any_ret")
-                        col_mapping['Retailer'] = retailer_col
-                    
-                    # Rename columns
-                    pairs_df = pairs_df.rename(columns=col_mapping)
+            if not all(col in pairs_df.columns for col in required_cols):
+                # Look for Brand-like columns
+                brand_cols = [col for col in pairs_df.columns if 'brand' in col.lower()]
+                retailer_cols = [col for col in pairs_df.columns if any(kw in col.lower() for kw in ['retailer', 'url', 'website', 'site', 'domain'])]
+                
+                col_mapping = {}
+                
+                if brand_cols:
+                    brand_col = st.selectbox("Select the column containing brand names:", brand_cols, key="bulk_pairs_brand_col")
+                    col_mapping['Brand'] = brand_col
+                else:
+                    brand_col = st.selectbox("Select the column containing brand names:", pairs_df.columns, key="bulk_pairs_any_brand")
+                    col_mapping['Brand'] = brand_col
+                
+                if retailer_cols:
+                    retailer_col = st.selectbox("Select the column containing retailer URLs:", retailer_cols, key="bulk_pairs_ret_col")
+                    col_mapping['Retailer'] = retailer_col
+                else:
+                    retailer_col = st.selectbox("Select the column containing retailer URLs:", pairs_df.columns, key="bulk_pairs_any_ret")
+                    col_mapping['Retailer'] = retailer_col
+                
+                # Rename columns
+                pairs_df = pairs_df.rename(columns=col_mapping)
             
             # Now check if we have the required columns
             if all(col in pairs_df.columns for col in required_cols):
@@ -760,7 +761,6 @@ if st.session_state['results_df'] is not None:
     col1, col2 = st.columns(2)
     
     # Get timestamp for filenames
-    import datetime
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # Download as CSV
@@ -838,3 +838,4 @@ with st.expander("Help & Information"):
     - Some websites may block automated checks - these will appear as "Unverified"
     - The Excel export includes a separate tab for each brand's results
     """)
+                
