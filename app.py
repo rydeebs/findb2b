@@ -13,7 +13,7 @@ import json
 
 # Set up page configuration
 st.set_page_config(
-    page_title="Retailer Keyword Validator",
+    page_title="Retailer Brand Validator",
     page_icon="🔍",
     layout="wide"
 )
@@ -32,6 +32,9 @@ english_stopwords = set(['and', 'the', 'for', 'with', 'that', 'this', 'you', 'yo
 # Initialize session state variables
 if 'results_df' not in st.session_state:
     st.session_state['results_df'] = None
+
+if 'bulk_brands_df' not in st.session_state:
+    st.session_state['bulk_brands_df'] = None
 
 # Function to normalize URLs
 def normalize_url(url):
@@ -259,7 +262,7 @@ def extract_keywords_from_website(url, brand_name=None, retries=3):
         
         # 4. Enhanced content extraction
         content_tags = ['article', 'main', 'section', 'div']
-        content_classes = ['content', 'post', 'entry', 'article', 'main', 'blog']
+        content_classes = ['content', 'post', 'entry', 'article', 'main', 'blog', 'product']
         
         # Look for content in semantic tags first
         for tag in content_tags[:3]:  # article, main, section
@@ -275,7 +278,7 @@ def extract_keywords_from_website(url, brand_name=None, retries=3):
                 
         # 5. Enhanced tag extraction
         # Look for tags in multiple places with various patterns
-        tag_patterns = ['tag', 'category', 'topic', 'keyword', 'subject', 'label']
+        tag_patterns = ['tag', 'category', 'topic', 'keyword', 'subject', 'label', 'brand']
         
         # Check for elements with tag-related classes
         for pattern in tag_patterns:
@@ -297,7 +300,8 @@ def extract_keywords_from_website(url, brand_name=None, retries=3):
             r'(?:tag|tags)[=/]([^/&?#]+)',
             r'(?:category|categories)[=/]([^/&?#]+)',
             r'(?:topic|topics)[=/]([^/&?#]+)',
-            r'(?:keyword|keywords)[=/]([^/&?#]+)'
+            r'(?:keyword|keywords)[=/]([^/&?#]+)',
+            r'(?:brand|brands)[=/]([^/&?#]+)'
         ]
         
         for link in soup.find_all('a', href=True):
@@ -390,6 +394,7 @@ def process_websites_with_brand_validation(websites, brand_name):
                 # Add to results
                 results.append({
                     'Website': url,
+                    'Brand': brand_name,
                     'Status': "Valid" if validation_results[url]['is_valid'] else "Unverified",
                     'Validation Message': validation_results[url]['validation_message'],
                     'Top Keywords': keywords,
@@ -398,6 +403,7 @@ def process_websites_with_brand_validation(websites, brand_name):
             except Exception as e:
                 results.append({
                     'Website': url,
+                    'Brand': brand_name,
                     'Status': "Error",
                     'Validation Message': validation_results[url]['validation_message'],
                     'Top Keywords': f"Error: {str(e)}",
@@ -416,6 +422,7 @@ def process_websites_with_brand_validation(websites, brand_name):
             if not any(r['Website'] == url for r in results):
                 results.append({
                     'Website': url,
+                    'Brand': brand_name,
                     'Status': "Invalid",
                     'Validation Message': validation['validation_message'],
                     'Top Keywords': "Not processed - invalid retailer",
@@ -435,123 +442,388 @@ def process_websites_with_brand_validation(websites, brand_name):
     
     return df
 
-# Main app layout
-st.markdown("### Upload Retailer List and Specify Brand")
-
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    uploaded_file = st.file_uploader("Upload a CSV or text file with retailer URLs (one per line)", type=["csv", "txt"])
-
-with col2:
-    brand_name = st.text_input("Enter brand name to validate")
-
-if uploaded_file is not None and brand_name:
-    try:
-        # Process the uploaded file
-        file_extension = uploaded_file.name.split('.')[-1].lower()
-        
-        if file_extension == 'csv':
-            # Read the CSV file
-            df = pd.read_csv(uploaded_file)
+# Function to process bulk brands and retailers
+def process_bulk_validation(brands_df):
+    # Create a progress bar
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    all_results = []
+    total_combinations = len(brands_df)
+    processed = 0
+    
+    # Process each brand-retailer combination
+    for index, row in brands_df.iterrows():
+        try:
+            brand_name = row['Brand']
+            retailer_url = row['Retailer']
             
-            # Look for URL columns
-            url_columns = [col for col in df.columns if any(kw in col.lower() for kw in ['url', 'website', 'site', 'link', 'domain'])]
+            status_text.text(f"Processing {brand_name} at {retailer_url}... ({processed}/{total_combinations})")
             
-            if url_columns:
-                url_column = st.selectbox("Select the column containing retailer URLs:", url_columns)
+            # Validate retailer with brand
+            is_valid, validation_message = validate_retailer_with_brand(retailer_url, brand_name)
+            
+            # Extract keywords if valid or unverified
+            if is_valid or "unverified" in validation_message.lower():
+                keywords = extract_keywords_from_website(retailer_url, brand_name)
+                brand_in_keywords = brand_name.lower() in keywords.lower()
             else:
-                url_column = st.selectbox("Select the column containing retailer URLs:", df.columns)
+                keywords = "Not processed - invalid retailer"
+                brand_in_keywords = False
             
-            # Get the website URLs
-            websites = df[url_column].dropna().tolist()
-        else:
-            # Read as text file
-            content = uploaded_file.getvalue().decode("utf-8")
-            websites = [line.strip() for line in content.split('\n') if line.strip()]
+            # Add to results
+            all_results.append({
+                'Website': retailer_url,
+                'Brand': brand_name,
+                'Status': "Valid" if is_valid else ("Unverified" if "unverified" in validation_message.lower() else "Invalid"),
+                'Validation Message': validation_message,
+                'Top Keywords': keywords,
+                'Brand Found in Keywords': "Yes" if brand_in_keywords else "No"
+            })
+            
+            # Update progress
+            processed += 1
+            progress_bar.progress(processed / total_combinations)
         
-        st.write(f"Found {len(websites)} websites to validate for brand: {brand_name}")
-        
-        # Show a sample
-        if len(websites) > 5:
-            with st.expander("View sample websites"):
-                st.write(websites[:10])
-        else:
-            st.write("Websites:", websites)
-        
-        # Process button
-        if st.button(f"Validate Retailers for {brand_name}"):
-            # Process websites and get results
-            st.session_state['results_df'] = process_websites_with_brand_validation(websites, brand_name)
+        except Exception as e:
+            all_results.append({
+                'Website': row['Retailer'],
+                'Brand': row['Brand'],
+                'Status': "Error",
+                'Validation Message': f"Error during processing: {str(e)}",
+                'Top Keywords': "Error occurred",
+                'Brand Found in Keywords': "No"
+            })
+            
+            processed += 1
+            progress_bar.progress(processed / total_combinations)
     
-    except Exception as e:
-        st.error(f"Error processing file: {str(e)}")
-        st.exception(e)
-elif uploaded_file and not brand_name:
-    st.warning("Please enter a brand name to validate retailers.")
-elif brand_name and not uploaded_file:
-    st.info("Please upload a file with retailer URLs.")
+    # Create DataFrame
+    df = pd.DataFrame(all_results)
+    
+    # Sort by validation status
+    df['Sort Order'] = df['Status'].map({'Valid': 0, 'Unverified': 1, 'Invalid': 2, 'Error': 3})
+    df = df.sort_values(['Brand', 'Sort Order']).drop('Sort Order', axis=1)
+    
+    # Complete
+    progress_bar.progress(1.0)
+    status_text.text(f"Completed processing {total_combinations} brand-retailer combinations!")
+    
+    return df
 
-# Display results if available
-if st.session_state['results_df'] is not None:
-    st.subheader("Validation Results")
+# Function to validate a single brand-retailer combination
+def validate_single_combination(retailer_url, brand_name):
+    st.info(f"Validating {brand_name} at {retailer_url}...")
     
-    # Display valid retailers first
-    valid_retailers = st.session_state['results_df'][st.session_state['results_df']['Status'] == 'Valid']
-    if not valid_retailers.empty:
-        st.success(f"Found {len(valid_retailers)} valid retailers for {brand_name}")
-        st.dataframe(valid_retailers)
+    # Validate retailer with brand
+    is_valid, validation_message = validate_retailer_with_brand(retailer_url, brand_name)
+    
+    # Extract keywords if valid or unverified
+    if is_valid or "unverified" in validation_message.lower():
+        keywords = extract_keywords_from_website(retailer_url, brand_name)
+        brand_in_keywords = brand_name.lower() in keywords.lower()
     else:
-        st.warning(f"No confirmed valid retailers found for {brand_name}")
+        keywords = "Not processed - invalid retailer"
+        brand_in_keywords = False
     
-    # Display unverified retailers
-    unverified_retailers = st.session_state['results_df'][st.session_state['results_df']['Status'] == 'Unverified']
-    if not unverified_retailers.empty:
-        st.info(f"{len(unverified_retailers)} retailers could not be definitively verified")
-        with st.expander("View unverified retailers"):
-            st.dataframe(unverified_retailers)
+    # Create result
+    result = {
+        'Website': retailer_url,
+        'Brand': brand_name,
+        'Status': "Valid" if is_valid else ("Unverified" if "unverified" in validation_message.lower() else "Invalid"),
+        'Validation Message': validation_message,
+        'Top Keywords': keywords,
+        'Brand Found in Keywords': "Yes" if brand_in_keywords else "No"
+    }
     
-    # Display invalid retailers
-    invalid_retailers = st.session_state['results_df'][st.session_state['results_df']['Status'] == 'Invalid']
-    if not invalid_retailers.empty:
-        with st.expander(f"View {len(invalid_retailers)} invalid retailers"):
-            st.dataframe(invalid_retailers)
+    # Display result
+    status_color = "green" if is_valid else ("blue" if "unverified" in validation_message.lower() else "red")
+    
+    st.markdown(f"### Status: <span style='color:{status_color}'>{result['Status']}</span>", unsafe_allow_html=True)
+    st.write(f"**Validation Result:** {result['Validation Message']}")
+    
+    if keywords != "Not processed - invalid retailer":
+        st.write(f"**Top Keywords:** {keywords}")
+        st.write(f"**Brand Found in Keywords:** {result['Brand Found in Keywords']}")
+    
+    # Return as DataFrame (single row)
+    return pd.DataFrame([result])
+
+# Main app layout with tabs
+tab1, tab2, tab3 = st.tabs(["Bulk Validation", "Single Validation", "Bulk Brand-Retailer Pairs"])
+
+# Tab 1: Bulk Validation (Multiple retailers, one brand)
+with tab1:
+    st.header("Validate Multiple Retailers for a Brand")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        uploaded_file = st.file_uploader("Upload a CSV or text file with retailer URLs (one per line)", 
+                                         type=["csv", "txt"], key="bulk_upload")
+    
+    with col2:
+        brand_name = st.text_input("Enter brand name to validate")
+    
+    if uploaded_file is not None and brand_name:
+        try:
+            # Process the uploaded file
+            file_extension = uploaded_file.name.split('.')[-1].lower()
+            
+            if file_extension == 'csv':
+                # Read the CSV file
+                df = pd.read_csv(uploaded_file)
+                
+                # Look for URL columns
+                url_columns = [col for col in df.columns if any(kw in col.lower() for kw in ['url', 'website', 'site', 'link', 'domain'])]
+                
+                if url_columns:
+                    url_column = st.selectbox("Select the column containing retailer URLs:", url_columns, key="bulk_url_col")
+                else:
+                    url_column = st.selectbox("Select the column containing retailer URLs:", df.columns, key="bulk_any_col")
+                
+                # Get the website URLs
+                websites = df[url_column].dropna().tolist()
+            else:
+                # Read as text file
+                content = uploaded_file.getvalue().decode("utf-8")
+                websites = [line.strip() for line in content.split('\n') if line.strip()]
+            
+            st.write(f"Found {len(websites)} websites to validate for brand: {brand_name}")
+            
+            # Show a sample
+            if len(websites) > 5:
+                with st.expander("View sample websites"):
+                    st.write(websites[:10])
+            else:
+                st.write("Websites:", websites)
+            
+            # Process button
+            if st.button(f"Validate Retailers for {brand_name}", key="bulk_validate_btn"):
+                # Process websites and get results
+                st.session_state['results_df'] = process_websites_with_brand_validation(websites, brand_name)
+        
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}")
+            st.exception(e)
+    elif uploaded_file and not brand_name:
+        st.warning("Please enter a brand name to validate retailers.")
+    elif brand_name and not uploaded_file:
+        st.info("Please upload a file with retailer URLs.")
+
+# Tab 2: Single Validation (One retailer, one brand)
+with tab2:
+    st.header("Validate a Single Retailer for a Brand")
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        single_retailer = st.text_input("Enter retailer website URL")
+    
+    with col2:
+        single_brand = st.text_input("Enter brand name")
+    
+    if st.button("Validate Single Combination", key="single_validate_btn") and single_retailer and single_brand:
+        try:
+            # Validate the single combination
+            single_result_df = validate_single_combination(single_retailer, single_brand)
+            
+            # Store result for download
+            if 'results_df' not in st.session_state or st.session_state['results_df'] is None:
+                st.session_state['results_df'] = single_result_df
+            else:
+                st.session_state['results_df'] = pd.concat([st.session_state['results_df'], single_result_df], ignore_index=True)
+            
+            # Download single result
+            st.subheader("Download Result")
+            
+            # Download as CSV
+            csv = single_result_df.to_csv(index=False)
+            st.download_button(
+                label="Download as CSV",
+                data=csv,
+                file_name=f"{single_brand}_{normalize_url(single_retailer)}_validation.csv",
+                mime="text/csv"
+            )
+            
+        except Exception as e:
+            st.error(f"Error processing: {str(e)}")
+    elif (single_retailer or single_brand) and not (single_retailer and single_brand):
+        st.warning("Please enter both a retailer URL and a brand name.")
+
+# Tab 3: Bulk Brand-Retailer Pairs (Multiple retailers, multiple brands in CSV)
+with tab3:
+    st.header("Validate Multiple Brand-Retailer Pairs")
+    
+    # Upload CSV with brand-retailer pairs
+    bulk_pairs_file = st.file_uploader("Upload CSV with Brand and Retailer columns", 
+                                       type=["csv"], key="bulk_pairs_upload")
+    
+    if bulk_pairs_file is not None:
+        try:
+            # Read the CSV file
+            pairs_df = pd.read_csv(bulk_pairs_file)
+            
+            # Check if required columns exist
+            required_cols = ['Brand', 'Retailer']
+            
+            # If columns with exact names don't exist, try to map
+                if not all(col in pairs_df.columns for col in required_cols):
+                    # Look for Brand-like columns
+                    brand_cols = [col for col in pairs_df.columns if 'brand' in col.lower()]
+                    retailer_cols = [col for col in pairs_df.columns if any(kw in col.lower() for kw in ['retailer', 'url', 'website', 'site', 'domain'])]
+                    
+                    col_mapping = {}
+                    
+                    if brand_cols:
+                        brand_col = st.selectbox("Select the column containing brand names:", brand_cols, key="bulk_pairs_brand_col")
+                        col_mapping['Brand'] = brand_col
+                    else:
+                        brand_col = st.selectbox("Select the column containing brand names:", pairs_df.columns, key="bulk_pairs_any_brand")
+                        col_mapping['Brand'] = brand_col
+                    
+                    if retailer_cols:
+                        retailer_col = st.selectbox("Select the column containing retailer URLs:", retailer_cols, key="bulk_pairs_ret_col")
+                        col_mapping['Retailer'] = retailer_col
+                    else:
+                        retailer_col = st.selectbox("Select the column containing retailer URLs:", pairs_df.columns, key="bulk_pairs_any_ret")
+                        col_mapping['Retailer'] = retailer_col
+                    
+                    # Rename columns
+                    pairs_df = pairs_df.rename(columns=col_mapping)
+            
+            # Now check if we have the required columns
+            if all(col in pairs_df.columns for col in required_cols):
+                # Clean data
+                pairs_df = pairs_df[required_cols].dropna()
+                
+                # Display found combinations
+                st.write(f"Found {len(pairs_df)} brand-retailer combinations to validate")
+                
+                # Show a sample
+                if len(pairs_df) > 5:
+                    with st.expander("View sample combinations"):
+                        st.dataframe(pairs_df.head(10))
+                else:
+                    st.dataframe(pairs_df)
+                
+                # Store for later processing
+                st.session_state['bulk_brands_df'] = pairs_df
+                
+                # Process button
+                if st.button("Validate All Brand-Retailer Pairs", key="bulk_pairs_btn"):
+                    # Process brands and retailers
+                    st.session_state['results_df'] = process_bulk_validation(st.session_state['bulk_brands_df'])
+            else:
+                st.error("Could not identify required columns. Please ensure your CSV has 'Brand' and 'Retailer' columns.")
+        
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}")
+            st.exception(e)
+
+# Display results if available (shared between tabs)
+if st.session_state['results_df'] is not None:
+    st.header("Validation Results")
+    
+    # Get unique brands in results
+    brands = st.session_state['results_df']['Brand'].unique()
+    
+    # For each brand, show results
+    for brand in brands:
+        brand_results = st.session_state['results_df'][st.session_state['results_df']['Brand'] == brand]
+        
+        # Create expander for each brand
+        with st.expander(f"Results for {brand} ({len(brand_results)} retailers)", expanded=len(brands) == 1):
+            # Display valid retailers first
+            valid_retailers = brand_results[brand_results['Status'] == 'Valid']
+            if not valid_retailers.empty:
+                st.success(f"Found {len(valid_retailers)} valid retailers for {brand}")
+                st.dataframe(valid_retailers)
+            else:
+                st.warning(f"No confirmed valid retailers found for {brand}")
+            
+            # Display unverified retailers
+            unverified_retailers = brand_results[brand_results['Status'] == 'Unverified']
+            if not unverified_retailers.empty:
+                st.info(f"{len(unverified_retailers)} retailers could not be definitively verified")
+                with st.expander("View unverified retailers"):
+                    st.dataframe(unverified_retailers)
+            
+            # Display invalid retailers
+            invalid_retailers = brand_results[brand_results['Status'] == 'Invalid']
+            if not invalid_retailers.empty:
+                with st.expander(f"View {len(invalid_retailers)} invalid retailers"):
+                    st.dataframe(invalid_retailers)
     
     # Download options
-    st.subheader("Download Results")
+    st.subheader("Download All Results")
     col1, col2 = st.columns(2)
+    
+    # Get timestamp for filenames
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # Download as CSV
     csv = st.session_state['results_df'].to_csv(index=False)
     col1.download_button(
         label="Download as CSV",
         data=csv,
-        file_name=f"{brand_name}_retailer_validation.csv",
+        file_name=f"brand_retailer_validation_{timestamp}.csv",
         mime="text/csv"
     )
     
     # Download as Excel
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        st.session_state['results_df'].to_excel(writer, index=False, sheet_name='Retailer Validation')
+        st.session_state['results_df'].to_excel(writer, index=False, sheet_name='Validation Results')
+        
+        # Create a separate worksheet for each brand
+        for brand in brands:
+            brand_results = st.session_state['results_df'][st.session_state['results_df']['Brand'] == brand]
+            # Clean brand name for worksheet name (Excel has a 31 char limit and restricts certain chars)
+            sheet_name = brand[:31].replace(':', '').replace('\\', '').replace('/', '').replace('?', '').replace('*', '').replace('[', '').replace(']', '')
+            brand_results.to_excel(writer, index=False, sheet_name=sheet_name)
     
     buffer.seek(0)
     col2.download_button(
         label="Download as Excel",
         data=buffer,
-        file_name=f"{brand_name}_retailer_validation.xlsx",
+        file_name=f"brand_retailer_validation_{timestamp}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+# Reset results button
+if st.session_state['results_df'] is not None:
+    if st.button("Clear All Results"):
+        st.session_state['results_df'] = None
+        st.session_state['bulk_brands_df'] = None
+        st.experimental_rerun()
 
 # Help section
 with st.expander("Help & Information"):
     st.write("""
     ### About This App
     
-    This app validates retailers for a specific brand by:
-    1. Checking Google and Google Shopping for evidence that the retailer sells the brand
-    2. Directly visiting the retailer's website to confirm brand presence
-    3. Extracting keywords from validated retailer websites
+    This app validates retailers for specific brands through three main methods:
+    
+    **Tab 1: Bulk Validation** 
+    - Upload a list of retailers to validate for a single brand
+    - Ideal for checking multiple stockists for one product line
+    
+    **Tab 2: Single Validation**
+    - Quickly check a single retailer-brand combination
+    - Get detailed results for a specific validation
+    
+    **Tab 3: Bulk Brand-Retailer Pairs**
+    - Upload a CSV with 'Brand' and 'Retailer' columns
+    - Process many different brand-retailer combinations at once
+    - Ideal for validating entire distribution networks
+    
+    ### Validation Process
+    
+    1. **Google Shopping Check**: Searches for "[brand] site:[retailer]" in Google Shopping
+    2. **Direct Website Verification**: Visits the retailer's website to confirm brand presence
+    3. **Keyword Extraction**: Analyzes the website content for relevant keywords
     
     ### Validation Levels
     
@@ -562,7 +834,7 @@ with st.expander("Help & Information"):
     ### Tips for Best Results
     
     - Use complete brand names (e.g., "Nike" instead of "N")
-    - For more accurate results, include fewer websites in each batch (20-30)
+    - For more accurate results, process in smaller batches
     - Some websites may block automated checks - these will appear as "Unverified"
-    - The app uses Google Shopping and Google Search to verify retailers
+    - The Excel export includes a separate tab for each brand's results
     """)
