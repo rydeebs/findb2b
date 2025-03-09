@@ -2,910 +2,567 @@ import streamlit as st
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from collections import Counter
 import re
+from urllib.parse import urlparse, quote_plus
+import concurrent.futures
 import time
-import random
 import io
-import matplotlib.pyplot as plt
-from io import BytesIO
+import random
+import json
 
-# Set page configuration
+# Set up page configuration
 st.set_page_config(
-    page_title="B2B Partnership Finder",
+    page_title="Retailer Keyword Validator",
     page_icon="🔍",
     layout="wide"
 )
 
-# Application header
-st.title("B2B Partnership Finder")
-st.markdown("""
-This tool helps business development representatives identify B2B retail distribution 
-partnerships for brands. Enter a merchant's website to discover their retail partners.
-""")
+# Add title and description
+st.title("Retailer Brand Validator")
+st.markdown("Validate retailers and extract keywords to confirm if they stock specific brands")
 
-# Sidebar with instructions
-with st.sidebar:
-    st.header("How it works")
-    st.markdown("""
-    1. Enter a brand's website URL
-    2. The tool analyzes:
-       - Website content for retailer mentions
-       - "Where to buy" or "Store locator" pages
-       - Press releases mentioning partnerships
-       - Backlink analysis from major retailers
-    3. Results show verified retail partners with high confidence scores (90%+)
-    
-    **Note:** In a full implementation, this would connect to external APIs 
-    for comprehensive data analysis.
-    """)
-    
-    st.header("Example Brands")
-    st.markdown("""
-    Try these examples:
-    - Snow Cosmetics (trysnow.com)
-    - Rothy's (rothys.com)
-    - Allbirds (allbirds.com)
-    """)
+# Define a simple list of stopwords
+english_stopwords = set(['and', 'the', 'for', 'with', 'that', 'this', 'you', 'your', 'our', 'from', 
+             'have', 'has', 'are', 'not', 'when', 'what', 'where', 'why', 'how', 'all',
+             'been', 'being', 'both', 'but', 'by', 'can', 'could', 'did', 'do', 'does',
+             'doing', 'down', 'each', 'few', 'more', 'most', 'off', 'on', 'once', 'only',
+             'own', 'same', 'should', 'so', 'some', 'such', 'than', 'too', 'very', 'will'])
 
-# Comprehensive retailer database 
-major_retailers = [
-    "AAFES- Domestic",
-    "Academy Sports and Outdoors",
-    "Ace Hardware",
-    "Albertsons",
-    "Altitude (Canada)",
-    "Amazon Advantage",
-    "Amazon Seller Central",
-    "Amazon Vendor Central",
-    "Anaconda Canada",
-    "Anthropologie",
-    "ASOS",
-    "Babylist",
-    "Backcountry",
-    "Barnes and Noble",
-    "Bass Pro Shop/Cabela's",
-    "Bass Pro Shop/Cabela's (Canada)",
-    "Bealls",
-    "Bed Bath & Beyond",
-    "Belk",
-    "Best Buy",
-    "BevMo!",
-    "Big Lots",
-    "Big Rock Sports",
-    "Bloomingdales",
-    "Bluemercury",
-    "Boscov's",
-    "Burlington",
-    "Buc-cees",
-    "C&S Wholesalers",
-    "Canadian Tire",
-    "Cardinal Health",
-    "Chatters Canada",
-    "Chewy",
-    "Coast Guard Exchange",
-    "Container Store",
-    "Costco",
-    "Coupang",
-    "Crate & Barrel",
-    "CVS",
-    "Dicks Sporting Goods / Field and Stream",
-    "Do It Best",
-    "Dollar General",
-    "Dollar Tree/ Family Dollar",
-    "Dot Food",
-    "Dillards",
-    "Essendant",
-    "Fabfitfun (FFF)",
-    "Fanatics",
-    "FAO Schwarz",
-    "Fastenal",
-    "FleetFarm",
-    "FLG",
-    "Five Below",
-    "FootLocker",
-    "Francesca's",
-    "Fullscript",
-    "Fred Meyer (Kroger)",
-    "Giant Eagle",
-    "GNC",
-    "Golf Town",
-    "GOOP",
-    "GoPuff",
-    "Gordon Food Services",
-    "Grainger",
-    "Grove Collaborative",
-    "Hamrick's",
-    "Harris Teeter (Kroger)",
-    "HEB",
-    "Holt Renfrew (Canada)",
-    "Home Depot",
-    "HSN",
-    "HyVee",
-    "iHerb",
-    "Indigo Canada",
-    "Ingles",
-    "Ingram Micro",
-    "K&G",
-    "KeHE",
-    "Keystone Automotive",
-    "Kohls",
-    "Lids",
-    "Lifetime / Business Impact Group (BIG)",
-    "LOBLAW",
-    "Lord & Taylor",
-    "Lowe's",
-    "Lynco",
-    "Macys",
-    "Marine Corps Exchange (MCX) Domenstic",
-    "Mark and Graham (Williams Sonoma)",
-    "Mark's",
-    "Marshall Retail Group (InMotion Entertainment)",
-    "MCKesson",
-    "McKesson Canada",
-    "Mclane",
-    "MEC",
-    "MECCA Brands International",
-    "Meijer",
-    "Menards",
-    "Napa Auto Parts",
-    "Natural Grocers",
-    "Neiman Marcus",
-    "Nexcom",
-    "Nordstrom",
-    "Nordstrom Canada",
-    "Nordstrom Rack",
-    "Office Depot",
-    "Pet Supermarket",
-    "Pet Supply Plus",
-    "Pet Valu (CANADA)",
-    "Petco",
-    "Petsmart",
-    "PGA Tour Superstore",
-    "Pottery Barn (Williams Sonoma)",
-    "Pottery Barn Kids (Williams Sonoma)",
-    "QVC",
-    "RCI (Sun & Ski Sports)",
-    "REI",
-    "Rejuvenation (Williams Sonoma)",
-    "Rite Aid",
-    "Roadrunner Sports",
-    "Ross",
-    "Rural King",
-    "Saks Fifth Avenue",
-    "Saks Off Fifth",
-    "Sally Beauty",
-    "Sams Club",
-    "Scheels",
-    "Schnuck",
-    "Sephora (U.S. DOMESTIC ONLY!!!)",
-    "Shoe Sensation",
-    "ShopBob (US)",
-    "Shoppers Drug Market- Canada",
-    "Sierra (TJX)",
-    "Sports Endeavours",
-    "Sprouts - Direct to Store",
-    "Sporting Life",
-    "Staples",
-    "Starboard cruise",
-    "Stitch Fix",
-    "Summit Racing",
-    "Super Retail Group",
-    "Superior Communication",
-    "Sur La Table",
-    "Target",
-    "The Iconic",
-    "The Paper Store",
-    "Threshold Enterprises",
-    "Thrive Market",
-    "TJ Maxx",
-    "Tractor Supply",
-    "True Value",
-    "Ulta",
-    "UNFI",
-    "Urban Outfitters",
-    "US Foods",
-    "Veterans Canteen Services (VCS)",
-    "Vistar",
-    "Vitamin Shoppe",
-    "Von Maur",
-    "Wakefern",
-    "Walgreens",
-    "Walmart",
-    "Walmart DSDC- Pack by Store",
-    "Walmart (Canada)",
-    "Wegmans",
-    "Well.ca",
-    "West Elm (Williams Sonoma)",
-    "Williams Sonoma",
-    "Whole Foods",
-    "World Wide Golf",
-    "Zappos",
-    "Zulily"
-]
+# Initialize session state variables
+if 'results_df' not in st.session_state:
+    st.session_state['results_df'] = None
 
-# Function to simulate website content analysis with improved verification
-def analyze_website_content(url, brand_name=""):
-    st.write("🔍 Analyzing website content...")
-    st.write("📑 Looking for 'Where to Buy' or 'Store Locator' pages...")
-    
-    # Placeholder for actual implementation
-    progress_bar = st.progress(0)
-    for i in range(100):
-        time.sleep(0.01)
-        progress_bar.progress(i + 1)
-    
-    st.success("Website content analysis complete!")
-    
-    # In a real implementation, we would:
-    # 1. Crawl the website to find "Where to Buy" or "Store Locator" pages
-    # 2. Extract retailer mentions from these pages
-    # 3. Verify each retailer by checking for links to their websites
-    
-    # Return a simulated set of "verified" retailers from website
-    if brand_name:
-        st.info(f"TIP: In a full implementation, the app would specifically look for mentions of '{brand_name}' on store locator pages.")
-    
-    return True
-
-# Function to simulate backlink analysis with verification
-def analyze_backlinks(url, brand_name=""):
-    st.write("🔗 Analyzing backlinks from retail websites...")
-    st.write("🧐 Verifying retailer links to confirm partnerships...")
-    
-    # Placeholder for actual implementation
-    progress_bar = st.progress(0)
-    for i in range(100):
-        time.sleep(0.01)
-        progress_bar.progress(i + 1)
-    
-    st.success("Backlink analysis complete!")
-    
-    # In a real implementation, we would:
-    # 1. Use a backlink API (Ahrefs, Majestic, SEMrush, etc.)
-    # 2. Check for backlinks from major retailer domains
-    # 3. Analyze the context of these backlinks to determine if they represent a partnership
-    
-    if brand_name:
-        st.info(f"TIP: In a full implementation, the app would verify if '{brand_name}' appears on retailer websites through direct search.")
-    
-    return True
-
-# Function to verify retailer presence with improved verification methods
-def verify_retailer_presence(retailer, brand_name):
-    """
-    Simulation of verification of brand presence on retailer website.
-    In a real implementation, this would use multiple verification methods:
-    
-    1. Direct retailer website search API
-    2. Backlink analysis between brand and retailer
-    3. Affiliate link detection
-    4. Social proof verification
-    5. Industry database cross-checking
-    
-    Returns:
-    - verification_score: 0-100 score of verification confidence
-    - verification_source: Description of the verification method
-    - verification_url: URL that provides evidence (if available)
-    """
-    
-    # For demo purposes, generate realistic verification scores
-    # In a real implementation, these would be based on actual verification attempts
-    
-    # Sample verification statuses - in a real app these would come from actual API calls
-    verified_brands = {
-        "Snow Cosmetics": ["Amazon", "Target", "Sephora", "Ulta Beauty", "Macy's", "Nordstrom"],
-        "Rothy's": ["Nordstrom", "Bloomingdale's", "Neiman Marcus", "Zappos"],
-        "Allbirds": ["Nordstrom", "Dick's Sporting Goods", "REI"],
-    }
-    
-    # Verification methods that would be used in a full implementation
-    verification_methods = [
-        "Retailer website product page found",
-        "Brand listed in retailer's brand directory",
-        "Backlink analysis confirmed partnership",
-        "Affiliate link detection verified",
-        "Found on brand's 'Where to Buy' page",
-        "Direct API verification with retailer"
-    ]
-    
-    # For known brands, use our verified retailer list
-    if brand_name in verified_brands and retailer in verified_brands[brand_name]:
-        verification_score = random.randint(90, 100)  # High confidence for known partnerships
-        verification_source = random.choice(verification_methods)
-        
-        # Generate a realistic verification URL based on retailer
-        retailer_domain = retailer.lower().replace(" ", "").replace("'", "").split("(")[0].strip()
-        brand_slug = brand_name.lower().replace(" ", "-")
-        
-        if "amazon" in retailer_domain:
-            verification_url = f"amazon.com/stores/{brand_slug}"
-        elif "sephora" in retailer_domain:
-            verification_url = f"sephora.com/brand/{brand_slug}"
-        elif "target" in retailer_domain:
-            verification_url = f"target.com/b/{brand_slug}"
-        elif "nordstrom" in retailer_domain:
-            verification_url = f"nordstrom.com/brands/{brand_slug}"
-        else:
-            verification_url = f"{retailer_domain}.com/brands/{brand_slug}"
-        
-        return verification_score, verification_source, verification_url
-    
-    # For other combinations, evaluate based on industry match
-    elif brand_name:
-        # Check if this is a plausible match based on industry
-        is_beauty_brand = any(term in brand_name.lower() for term in ["beauty", "cosmetic", "skin", "makeup"])
-        is_footwear_brand = any(term in brand_name.lower() for term in ["shoe", "footwear", "sneaker"])
-        is_apparel_brand = any(term in brand_name.lower() for term in ["apparel", "cloth", "wear", "fashion"])
-        is_food_brand = any(term in brand_name.lower() for term in ["food", "snack", "grocery", "meal", "drink"])
-        is_pet_brand = any(term in brand_name.lower() for term in ["pet", "dog", "cat", "animal"])
-        is_tech_brand = any(term in brand_name.lower() for term in ["tech", "electronics", "digital", "computer"])
-        
-        # Check if retailer is in the same industry
-        is_beauty_retailer = retailer in ["Sephora", "Ulta Beauty", "Bluemercury", "Macy's", "CVS"]
-        is_footwear_retailer = retailer in ["DSW", "Zappos", "Foot Locker", "Famous Footwear"]
-        is_apparel_retailer = retailer in ["Nordstrom", "Macy's", "TJ Maxx", "Urban Outfitters"]
-        is_food_retailer = retailer in ["Whole Foods", "Kroger", "Albertsons", "Sprouts", "Wegmans", "Target"]
-        is_pet_retailer = retailer in ["Chewy", "Petco", "PetSmart", "Pet Supplies Plus"]
-        is_tech_retailer = retailer in ["Best Buy", "Apple", "Target", "Walmart", "Amazon"]
-        
-        # Set base verification score
-        if (is_beauty_brand and is_beauty_retailer) or \
-           (is_footwear_brand and is_footwear_retailer) or \
-           (is_apparel_brand and is_apparel_retailer) or \
-           (is_food_brand and is_food_retailer) or \
-           (is_pet_brand and is_pet_retailer) or \
-           (is_tech_brand and is_tech_retailer):
-            verification_score = random.randint(30, 89)  # Plausible but not confirmed
-        else:
-            verification_score = random.randint(5, 40)  # Less likely match
-        
-        # We're only returning results with 90%+ confidence, so most of these won't be shown
-        verification_source = "Insufficient verification evidence"
-        verification_url = "#"
-        
-        return verification_score, verification_source, verification_url
-    
-    # Fallback for URL-only searches without brand name
-    else:
-        verification_score = random.randint(10, 60)  # Less confident without brand name
-        verification_source = "Unverified - brand name needed for confirmation"
-        verification_url = "#"
-        return verification_score, verification_source, verification_url
-
-# Function to generate mock results based on the input URL and brand name
-def generate_results(url, brand_name=""):
-    # Predefined sample results for demonstration
-    sample_data = {
-        "trysnow.com": [
-            {"retailer": "Amazon", "confidence": 95, "source": "Direct mention on website + backlinks", "url": "amazon.com/snow"},
-            {"retailer": "Target", "confidence": 90, "source": "Store locator page + backlinks", "url": "target.com/snow"},
-            {"retailer": "Sephora", "confidence": 85, "source": "Press release + social media", "url": "sephora.com/snow"},
-            {"retailer": "Ulta Beauty", "confidence": 80, "source": "Backlinks + product listings", "url": "ulta.com/snow"},
-            {"retailer": "Nordstrom", "confidence": 70, "source": "Backlinks", "url": "nordstrom.com/snow"}
-        ],
-        "rothys.com": [
-            {"retailer": "Nordstrom", "confidence": 95, "source": "Direct mention + store locator", "url": "nordstrom.com/rothys"},
-            {"retailer": "Bloomingdale's", "confidence": 85, "source": "Press release + backlinks", "url": "bloomingdales.com/rothys"},
-            {"retailer": "Neiman Marcus", "confidence": 80, "source": "Backlinks + product listings", "url": "neimanmarcus.com/rothys"}
-        ],
-        "allbirds.com": [
-            {"retailer": "Nordstrom", "confidence": 90, "source": "Direct mention + backlinks", "url": "nordstrom.com/allbirds"},
-            {"retailer": "Dick's Sporting Goods", "confidence": 85, "source": "Store locator + press release", "url": "dickssportinggoods.com/allbirds"},
-            {"retailer": "REI", "confidence": 80, "source": "Backlinks + social media", "url": "rei.com/allbirds"}
-        ],
-        # Brand name specific matches
-        "Snow Cosmetics": [
-            {"retailer": "Macy's", "confidence": 88, "source": "Brand name search + retail partnerships", "url": "macys.com/shop/snow-cosmetics"},
-            {"retailer": "Bluemercury", "confidence": 82, "source": "Brand partnerships listing", "url": "bluemercury.com/collections/snow-cosmetics"},
-            {"retailer": "Anthropologie", "confidence": 77, "source": "Brand name search", "url": "anthropologie.com/brands/snow-cosmetics"}
-        ],
-        "Rothy's": [
-            {"retailer": "Zappos", "confidence": 87, "source": "Brand name search", "url": "zappos.com/rothys"},
-            {"retailer": "DSW", "confidence": 78, "source": "Brand partnerships", "url": "dsw.com/en/us/brands/rothys"}
-        ],
-        "Allbirds": [
-            {"retailer": "Zappos", "confidence": 89, "source": "Brand partnerships listing", "url": "zappos.com/allbirds"},
-            {"retailer": "Foot Locker", "confidence": 76, "source": "Brand name search", "url": "footlocker.com/brand/allbirds"}
-        ]
-    }
-    
-    # Collect all applicable results based on URL and brand name
-    combined_results = []
-    
-    # Add URL-based results
-    for sample_domain, results in sample_data.items():
-        if sample_domain in url.lower():
-            combined_results.extend(results)
-    
-    # Add brand name-based results if provided
-    if brand_name:
-        for sample_brand, results in sample_data.items():
-            # Check if sample brand is a brand name (not ending with .com) and matches the input brand name
-            if not sample_brand.endswith(".com") and brand_name.lower() in sample_brand.lower():
-                # Add only unique retailers that weren't found in URL search
-                existing_retailers = {r["retailer"] for r in combined_results}
-                unique_brand_results = [r for r in results if r["retailer"] not in existing_retailers]
-                combined_results.extend(unique_brand_results)
-    
-    # If no specific matches, generate random results
-    if not combined_results:
-        # Generate random retailer results
-        num_retailers = random.randint(3, 8)
-        
-        # Try to make results more realistic based on the domain or brand name
-        search_term = ""
-        if brand_name:
-            search_term = brand_name.lower()
-        else:
-            # Extract domain name without extension
-            search_term = url.split('.')[0].lower()
-            if "/" in search_term:
-                search_term = search_term.split("/")[-1]
-        
-        # Product category matching (basic simulation)
-        category_retailers = {
-            "beauty": ["Sephora", "Ulta", "Bluemercury", "Macy's", "CVS", "Walgreens"],
-            "cosmetic": ["Sephora", "Ulta", "Bluemercury", "Target", "CVS"],
-            "shoe": ["DSW", "Zappos", "Foot Locker", "Famous Footwear", "Nordstrom"],
-            "apparel": ["Nordstrom", "Macy's", "TJ Maxx", "Target", "Urban Outfitters"],
-            "food": ["Whole Foods", "Kroger", "Albertsons", "Sprouts", "Wegmans"],
-            "pet": ["Chewy", "Petco", "PetSmart", "Pet Supplies Plus"],
-            "outdoor": ["REI", "Bass Pro Shop", "Cabela's", "Backcountry"],
-            "sports": ["Dick's Sporting Goods", "Academy Sports", "Foot Locker", "Hibbett Sports"]
-        }
-        
-        # Try to intelligently match retailers based on name clues
-        preferred_retailers = []
-        for category, retailers in category_retailers.items():
-            if category in search_term or any(term in search_term for term in ["snow", "cold", "winter", "ice"]):
-                # Snow might be beauty/cosmetics or outdoor
-                preferred_retailers.extend(category_retailers["beauty"])
-                preferred_retailers.extend(category_retailers["outdoor"])
-            elif any(term in search_term for term in ["shoe", "foot", "sneaker", "boots"]):
-                preferred_retailers.extend(category_retailers["shoe"])
-            elif any(term in search_term for term in ["wear", "apparel", "cloth", "dress", "fashion"]):
-                preferred_retailers.extend(category_retailers["apparel"])
-            elif any(term in search_term for term in ["beauty", "cosmetic", "skin", "makeup", "face"]):
-                preferred_retailers.extend(category_retailers["beauty"])
-            elif any(term in search_term for term in ["food", "grocery", "organic", "natural", "snack"]):
-                preferred_retailers.extend(category_retailers["food"])
-            elif any(term in search_term for term in ["pet", "dog", "cat", "animal"]):
-                preferred_retailers.extend(category_retailers["pet"])
-            elif any(term in search_term for term in ["outdoor", "camp", "hike", "mountain"]):
-                preferred_retailers.extend(category_retailers["outdoor"])
-            elif any(term in search_term for term in ["sport", "athletic", "fitness", "gym"]):
-                preferred_retailers.extend(category_retailers["sports"])
-        
-        # Make list unique
-        preferred_retailers = list(set(preferred_retailers))
-        
-        # If we found appropriate retailers for this type of product, use them
-        selected_retailers = []
-        if preferred_retailers and len(preferred_retailers) >= num_retailers:
-            selected_retailers = random.sample(preferred_retailers, num_retailers)
-        else:
-            # Fall back to general retailer list
-            selected_retailers = random.sample(major_retailers, num_retailers)
-        
-        random_results = []
-        for retailer in selected_retailers:
-            confidence = random.randint(60, 95)
-            source_types = ["Website mention", "Backlinks", "Press release", "Store locator", "Social media", "Brand name search"]
-            sources = random.sample(source_types, random.randint(1, 3))
-            source = " + ".join(sources)
-            
-            # Create a sensible URL based on retailer and product
-            retailer_domain = retailer.lower().replace(" ", "").replace("'", "").split("(")[0].strip()
-            domain_parts = retailer_domain.split("/")
-            retailer_domain = domain_parts[0]
-            
-            # Format the URL based on retailer patterns
-            if retailer_domain == "amazon":
-                retailer_url = f"amazon.com/s?k={search_term.replace(' ', '+')}"
-            elif retailer_domain in ["sephora", "ulta", "bluemercury"]:
-                retailer_url = f"{retailer_domain}.com/brands/{search_term.replace(' ', '-')}"
-            elif retailer_domain in ["target", "walmart"]:
-                retailer_url = f"{retailer_domain}.com/b/{search_term.replace(' ', '-')}"
-            elif retailer_domain in ["nordstrom", "macys", "bloomingdales"]:
-                retailer_url = f"{retailer_domain}.com/shop/brand/{search_term.replace(' ', '-')}"
-            else:
-                retailer_url = f"{retailer_domain}.com/{search_term.replace(' ', '-')}"
-                
-            random_results.append({
-                "retailer": retailer,
-                "confidence": confidence,
-                "source": source,
-                "url": retailer_url
-            })
-            
-        # Sort by confidence
-        random_results.sort(key=lambda x: x["confidence"], reverse=True)
-        return random_results
-    
-    # If we have results from the sample data, return them sorted by confidence
-    combined_results.sort(key=lambda x: x["confidence"], reverse=True)
-    return combined_results
-
-# Main analysis function
-def analyze_merchant(url, brand_name=""):
-    if not url:
-        st.warning("Please enter a website URL to analyze.")
-        return
-    
-    # Clean the URL if needed
-    if not url.startswith('http'):
+# Function to normalize URLs
+def normalize_url(url):
+    # Add http:// prefix if missing
+    if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     
-    # Format for display
-    display_url = url.replace('https://', '').replace('http://', '').rstrip('/')
+    # Parse the URL to handle variations
+    parsed = urlparse(url)
     
-    # Create display name combining URL and brand name if provided
-    display_name = display_url
-    if brand_name:
-        display_name = f"{brand_name} ({display_url})"
+    # Remove 'www.' if present
+    netloc = parsed.netloc
+    if netloc.startswith('www.'):
+        netloc = netloc[4:]
     
-    with st.expander("Analysis Process", expanded=True):
-        st.write(f"Analyzing partnerships for: **{display_name}**")
+    # Return the normalized domain
+    return netloc
+
+# Function to check if retailer is valid through Google Shopping
+def validate_retailer_with_brand(retailer_url, brand_name, max_retries=2):
+    try:
+        # Normalize the URL to get domain
+        domain = normalize_url(retailer_url)
+        base_domain = domain.split('.')[0]  # Get the main part of the domain
         
-        # Simulate analysis processes - now with brand name
-        content_analyzed = analyze_website_content(url, brand_name)
-        backlinks_analyzed = analyze_backlinks(url, brand_name)
+        # Construct Google Shopping search query
+        search_query = f"{brand_name} site:{domain}"
+        encoded_query = quote_plus(search_query)
+        google_shopping_url = f"https://www.google.com/search?q={encoded_query}&tbm=shop"
         
-        if content_analyzed and backlinks_analyzed:
-            st.write("✅ Analysis complete! Generating results...")
-    
-    # Generate and display results - now using both URL and brand name
-    results = generate_results(display_url, brand_name)
-    
-    # Verify each potential retailer partnership
-    verified_results = []
-    all_results_with_verification = []
-    if results:
-        with st.expander("Verification Process", expanded=True):
-            st.write("🔍 Verifying retail partnerships...")
-            progress_bar = st.progress(0)
+        # Rotate user agents to avoid blocking
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0'
+        ]
+        
+        headers = {
+            'User-Agent': random.choice(user_agents),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.google.com/',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        # Try Google Shopping search first
+        google_results_found = False
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(google_shopping_url, headers=headers, timeout=15)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Check if there are any shopping results
+                shopping_results = soup.find_all('div', class_=re.compile('sh-dgr__content'))
+                if shopping_results:
+                    google_results_found = True
+                    break
+                    
+                # Check for "no results" message
+                no_results = soup.find_all(text=re.compile('No results found', re.I))
+                if no_results:
+                    return False, f"No Google Shopping results found for {brand_name} on {domain}"
+                
+                time.sleep(1)
+            except requests.exceptions.RequestException:
+                time.sleep(1)
+                continue
+        
+        # If Google Shopping showed results, verify by checking the retailer's website directly
+        if google_results_found:
+            # Now verify by checking the retailer's website directly
+            retailer_url = f"https://{domain}/search?q={quote_plus(brand_name)}"
             
-            for i, result in enumerate(results):
-                # Simulate verification of this retailer partnership
-                st.write(f"Verifying partnership with {result['retailer']}...")
-                
-                # Get verification details
-                verification_score, verification_source, verification_url = verify_retailer_presence(
-                    result['retailer'], brand_name
-                )
-                
-                # Add verification data to result
-                result['verification_score'] = verification_score
-                result['verification_source'] = verification_source
-                result['verification_url'] = verification_url
-                
-                # Add all results to the list for display
-                all_results_with_verification.append(result)
-                
-                # Track highly verified results separately
-                if verification_score >= 90:
-                    verified_results.append(result)
-                
-                # Update progress
-                progress_bar.progress((i + 1) / len(results))
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(retailer_url, headers=headers, timeout=15)
+                    
+                    # If we get a successful response
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        
+                        # Check if brand name appears in the page
+                        brand_pattern = re.compile(re.escape(brand_name), re.I)
+                        brand_mentions = soup.find_all(text=brand_pattern)
+                        
+                        if brand_mentions:
+                            return True, f"Confirmed: {domain} has {brand_name} products (found on website)"
+                        else:
+                            # Check title and meta description as fallback
+                            if soup.title and brand_pattern.search(soup.title.text):
+                                return True, f"Likely: {domain} may carry {brand_name} (found in page title)"
+                    
+                    # Try fallback URL - just the domain homepage
+                    fallback_url = f"https://{domain}"
+                    response = requests.get(fallback_url, headers=headers, timeout=15)
+                    
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        
+                        # Look for brand mentions in homepage
+                        brand_pattern = re.compile(re.escape(brand_name), re.I)
+                        brand_mentions = soup.find_all(text=brand_pattern)
+                        
+                        if brand_mentions:
+                            return True, f"Possible: {domain} mentions {brand_name} on their homepage"
+                    
+                    return False, f"Uncertain: {domain} may not stock {brand_name} (not found on website)"
+                        
+                except requests.exceptions.RequestException:
+                    if attempt == max_retries - 1:
+                        return False, f"Could not verify {domain} - connection failed"
+                    time.sleep(1)
+        
+        # Fallback: check regular Google search as a last resort
+        google_search_url = f"https://www.google.com/search?q={encoded_query}"
+        
+        try:
+            response = requests.get(google_search_url, headers=headers, timeout=15)
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-            st.success(f"Verification complete! Found {len(verified_results)} highly verified partnerships out of {len(all_results_with_verification)} total potential retailers.")
+            # Check if there are any search results containing both the brand and domain
+            search_results = soup.find_all('div', class_='g')
+            
+            for result in search_results:
+                result_text = result.text.lower()
+                if brand_name.lower() in result_text and domain.lower() in result_text:
+                    return True, f"Possibly valid: {domain} appears in Google results for {brand_name}"
+        except:
+            pass
+            
+        return False, f"Unverified: Could not confirm if {domain} stocks {brand_name}"
+            
+    except Exception as e:
+        return False, f"Error validating retailer: {str(e)}"
+
+# Function to extract keywords from a website with enhanced search capabilities
+def extract_keywords_from_website(url, brand_name=None, retries=3):
+    try:
+        # Normalize URL
+        domain = normalize_url(url)
+        
+        # Add http:// prefix if missing
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+
+        # Rotate user agents to avoid blocking
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0'
+        ]
+        
+        headers = {
+            'User-Agent': random.choice(user_agents),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.google.com/',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        # Enhanced retry mechanism
+        success = False
+        error_msg = ""
+        
+        for attempt in range(retries):
+            try:
+                # Fetch the website with a timeout
+                response = requests.get(url, headers=headers, timeout=15)
+                response.raise_for_status()
+                success = True
+                break
+            except requests.exceptions.RequestException as e:
+                error_msg = str(e)
+                # Wait before retrying
+                time.sleep(1 * (attempt + 1))
+        
+        if not success:
+            return f"Error: {error_msg}"
+        
+        # Parse HTML content
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Extract keywords from different sources
+        keywords = []
+        
+        # 1. Enhanced meta tag extraction (including OpenGraph and Twitter tags)
+        for meta in soup.find_all('meta'):
+            # Meta keywords
+            if meta.get('name') == 'keywords' and meta.get('content'):
+                keywords.extend([k.strip().lower() for k in meta.get('content').split(',')])
+            
+            # Meta description
+            if meta.get('name') == 'description' and meta.get('content'):
+                desc_words = re.findall(r'\b\w+\b', meta.get('content').lower())
+                keywords.extend([word for word in desc_words if len(word) > 3])
+                
+            # OpenGraph tags
+            if meta.get('property') and 'og:' in meta.get('property') and meta.get('content'):
+                if 'title' in meta.get('property') or 'description' in meta.get('property'):
+                    og_words = re.findall(r'\b\w+\b', meta.get('content').lower())
+                    keywords.extend([word for word in og_words if len(word) > 3])
+        
+        # 2. Title tags
+        if soup.title:
+            title_words = re.findall(r'\b\w+\b', soup.title.text.lower())
+            keywords.extend([word for word in title_words if len(word) > 3])
+        
+        # 3. Heading tags with priority (h1, h2, h3)
+        for i, heading_tag in enumerate(['h1', 'h2', 'h3']):
+            # Give more weight to h1 than h2, and h2 more than h3
+            weight = 3 - i
+            for heading in soup.find_all(heading_tag):
+                heading_words = re.findall(r'\b\w+\b', heading.text.lower())
+                filtered_words = [word for word in heading_words if len(word) > 3]
+                # Add words multiple times based on weight
+                keywords.extend(filtered_words * weight)
+        
+        # 4. Enhanced content extraction
+        content_tags = ['article', 'main', 'section', 'div']
+        content_classes = ['content', 'post', 'entry', 'article', 'main', 'blog']
+        
+        # Look for content in semantic tags first
+        for tag in content_tags[:3]:  # article, main, section
+            for content in soup.find_all(tag):
+                content_words = re.findall(r'\b\w+\b', content.text.lower())
+                keywords.extend([word for word in content_words if len(word) > 3])
+        
+        # Look for content in divs with specific classes
+        for cls in content_classes:
+            for content in soup.find_all('div', class_=re.compile(cls, re.I)):
+                content_words = re.findall(r'\b\w+\b', content.text.lower())
+                keywords.extend([word for word in content_words if len(word) > 3])
+                
+        # 5. Enhanced tag extraction
+        # Look for tags in multiple places with various patterns
+        tag_patterns = ['tag', 'category', 'topic', 'keyword', 'subject', 'label']
+        
+        # Check for elements with tag-related classes
+        for pattern in tag_patterns:
+            # Class contains pattern
+            for tag in soup.find_all(class_=re.compile(pattern, re.I)):
+                tag_text = tag.text.strip().lower()
+                if tag_text and len(tag_text) > 2:
+                    # Add tag multiple times to increase weight
+                    keywords.extend([tag_text] * 3)  
+            
+            # ID contains pattern
+            for tag in soup.find_all(id=re.compile(pattern, re.I)):
+                tag_text = tag.text.strip().lower()
+                if tag_text and len(tag_text) > 2:
+                    keywords.extend([tag_text] * 3)
+        
+        # 6. Check for tags in URLs
+        tag_url_patterns = [
+            r'(?:tag|tags)[=/]([^/&?#]+)',
+            r'(?:category|categories)[=/]([^/&?#]+)',
+            r'(?:topic|topics)[=/]([^/&?#]+)',
+            r'(?:keyword|keywords)[=/]([^/&?#]+)'
+        ]
+        
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            for pattern in tag_url_patterns:
+                match = re.search(pattern, href)
+                if match:
+                    tag = match.group(1).replace('-', ' ').replace('_', ' ').replace('+', ' ').lower()
+                    # Add URL tags with higher weight
+                    keywords.extend([tag] * 2)
+        
+        # Count occurrences of each keyword
+        keyword_counter = Counter(keywords)
+        
+        # Remove common English stop words and short words
+        for word in list(keyword_counter.keys()):
+            if word in english_stopwords or len(word) <= 2:
+                del keyword_counter[word]
+        
+        # Get the 10 most common keywords
+        most_common = keyword_counter.most_common(10)
+        
+        # Format as a string: "keyword1, keyword2, keyword3, ..."
+        if most_common:
+            return ', '.join([f"{k}" for k, _ in most_common])
+        else:
+            return "No keywords found"
+            
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# Function to process websites with brand validation
+def process_websites_with_brand_validation(websites, brand_name):
+    # Create a progress bar
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     
-    # Display all results with verification info
-    if all_results_with_verification:
-        st.subheader("All Potential Retail Partners")
+    total = len(websites)
+    results = []
+    
+    # Determine the number of workers
+    max_workers = min(8, total)  # Limit to max 8 workers to avoid being blocked
+    
+    # Show status
+    status_text.text(f"Processing {total} websites...")
+    
+    # Use ThreadPoolExecutor for parallel processing
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # First validate the retailers through Google
+        future_to_url = {executor.submit(validate_retailer_with_brand, url, brand_name): url for url in websites}
         
-        # Convert to DataFrame for display
-        df = pd.DataFrame(all_results_with_verification)
+        validation_results = {}
+        for i, future in enumerate(concurrent.futures.as_completed(future_to_url)):
+            url = future_to_url[future]
+            try:
+                is_valid, validation_message = future.result()
+                validation_results[url] = {
+                    'is_valid': is_valid,
+                    'validation_message': validation_message
+                }
+            except Exception as e:
+                validation_results[url] = {
+                    'is_valid': False,
+                    'validation_message': f"Error during validation: {str(e)}"
+                }
+            
+            # Update progress
+            progress = (i + 1) / (total * 2)  # First half for validation
+            progress_bar.progress(progress)
+            status_text.text(f"Validating retailers: {i+1}/{total} ({int(progress*100)}%)")
+    
+        # Now extract keywords from validated retailers
+        i = 0
+        future_to_url = {}
         
-        # Sort by verification score (highest first)
-        df = df.sort_values('verification_score', ascending=False)
+        # Only process sites that were validated or we couldn't determine
+        for url, validation in validation_results.items():
+            if validation['is_valid'] or "unverified" in validation['validation_message'].lower():
+                future = executor.submit(extract_keywords_from_website, url, brand_name)
+                future_to_url[future] = url
         
-        # Display as a more visually appealing grid
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            for _, row in df.iterrows():
-                # Create verification badge based on score
-                if row['verification_score'] >= 90:
-                    verification_badge = "✅ Verified"
-                    badge_color = "green"
-                elif row['verification_score'] >= 50:
-                    verification_badge = "⚠️ Partially Verified"
-                    badge_color = "orange"
-                else:
-                    verification_badge = "❓ Low Confidence"
-                    badge_color = "gray"
+        for i, future in enumerate(concurrent.futures.as_completed(future_to_url)):
+            url = future_to_url[future]
+            try:
+                keywords = future.result()
                 
-                with st.container():
-                    st.markdown(f"""
-                    <div style="border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:5px;">
-                        <div style="display:flex; justify-content:space-between;">
-                            <h3 style="margin:0;">{row['retailer']}</h3>
-                            <span style="color:{badge_color}; font-weight:bold;">{verification_badge}</span>
-                        </div>
-                        <p><strong>Verification Score:</strong> {row['verification_score']}%</p>
-                        <p><strong>Verification Method:</strong> {row['verification_source']}</p>
-                        <p><strong>Confidence:</strong> {row['confidence']}%</p>
-                        <p><strong>Source:</strong> {row['source']}</p>
-                        <p><strong>URL:</strong> {row['url']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                # Determine if brand appears in keywords
+                brand_in_keywords = brand_name.lower() in keywords.lower()
+                
+                # Add to results
+                results.append({
+                    'Website': url,
+                    'Status': "Valid" if validation_results[url]['is_valid'] else "Unverified",
+                    'Validation Message': validation_results[url]['validation_message'],
+                    'Top Keywords': keywords,
+                    'Brand Found in Keywords': "Yes" if brand_in_keywords else "No"
+                })
+            except Exception as e:
+                results.append({
+                    'Website': url,
+                    'Status': "Error",
+                    'Validation Message': validation_results[url]['validation_message'],
+                    'Top Keywords': f"Error: {str(e)}",
+                    'Brand Found in Keywords': "No"
+                })
+            
+            # Update progress for second half
+            progress = 0.5 + ((i + 1) / (len(future_to_url) * 2))
+            progress_bar.progress(progress)
+            status_text.text(f"Extracting keywords: {i+1}/{len(future_to_url)} ({int(progress*100)}%)")
+    
+    # Add all invalid retailers to the results
+    for url, validation in validation_results.items():
+        if not validation['is_valid'] and "unverified" not in validation['validation_message'].lower():
+            # Skip if already added
+            if not any(r['Website'] == url for r in results):
+                results.append({
+                    'Website': url,
+                    'Status': "Invalid",
+                    'Validation Message': validation['validation_message'],
+                    'Top Keywords': "Not processed - invalid retailer",
+                    'Brand Found in Keywords': "No"
+                })
+    
+    # Create DataFrame
+    df = pd.DataFrame(results)
+    
+    # Sort by validation status
+    df['Sort Order'] = df['Status'].map({'Valid': 0, 'Unverified': 1, 'Invalid': 2, 'Error': 3})
+    df = df.sort_values('Sort Order').drop('Sort Order', axis=1)
+    
+    # Complete
+    progress_bar.progress(1.0)
+    status_text.text(f"Completed processing {total} websites!")
+    
+    return df
+
+# Main app layout
+st.markdown("### Upload Retailer List and Specify Brand")
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    uploaded_file = st.file_uploader("Upload a CSV or text file with retailer URLs (one per line)", type=["csv", "txt"])
+
+with col2:
+    brand_name = st.text_input("Enter brand name to validate")
+
+if uploaded_file is not None and brand_name:
+    try:
+        # Process the uploaded file
+        file_extension = uploaded_file.name.split('.')[-1].lower()
         
-        with col2:
-            # Create a bar chart of verification scores for top retailers
-            st.subheader("Verification Scores")
-            fig, ax = plt.subplots()
+        if file_extension == 'csv':
+            # Read the CSV file
+            df = pd.read_csv(uploaded_file)
             
-            # Sort retailers by verification score
-            df_sorted = df.sort_values('verification_score', ascending=False)
+            # Look for URL columns
+            url_columns = [col for col in df.columns if any(kw in col.lower() for kw in ['url', 'website', 'site', 'link', 'domain'])]
             
-            # Only show top 10 for readability if there are many results
-            if len(df_sorted) > 10:
-                df_plot = df_sorted.head(10)
+            if url_columns:
+                url_column = st.selectbox("Select the column containing retailer URLs:", url_columns)
             else:
-                df_plot = df_sorted
-                
-            ax.barh(df_plot['retailer'], df_plot['verification_score'], color='skyblue')
-            ax.set_xlabel('Verification Score (%)')
-            ax.set_title('Partnership Verification Scores')
-            plt.tight_layout()
-            st.pyplot(fig)
+                url_column = st.selectbox("Select the column containing retailer URLs:", df.columns)
+            
+            # Get the website URLs
+            websites = df[url_column].dropna().tolist()
+        else:
+            # Read as text file
+            content = uploaded_file.getvalue().decode("utf-8")
+            websites = [line.strip() for line in content.split('\n') if line.strip()]
         
-        # Add verification explanation
-        st.info("""
-        **Verification Methodology:**
+        st.write(f"Found {len(websites)} websites to validate for brand: {brand_name}")
         
-        - **✅ Verified (90-100%)**: Strong evidence of partnership confirmed through multiple sources
-        - **⚠️ Partially Verified (50-89%)**: Some evidence found but incomplete confirmation
-        - **❓ Low Confidence (0-49%)**: Limited or no evidence found, requires manual verification
+        # Show a sample
+        if len(websites) > 5:
+            with st.expander("View sample websites"):
+                st.write(websites[:10])
+        else:
+            st.write("Websites:", websites)
         
-        In a full implementation, verification would use retailer APIs, web searches, and backlink analysis.
-        """)
-        
-        # Add option to filter to only high confidence
-        if st.checkbox("Show only highly verified retailers (90%+ confidence)"):
-            st.subheader("Highly Verified Retail Partners Only")
-            df_verified = df[df['verification_score'] >= 90]
-            if len(df_verified) > 0:
-                st.dataframe(df_verified)
-            else:
-                st.warning("No highly verified partnerships found.")
-        
-        # Download results option with verification data for all results
-        csv = df.to_csv(index=False)
-        st.download_button(
-            label="Download Complete Results as CSV",
-            data=csv,
-            file_name=f"{display_url.split('.')[0]}_all_partners.csv",
-            mime="text/csv"
-        )
+        # Process button
+        if st.button(f"Validate Retailers for {brand_name}"):
+            # Process websites and get results
+            st.session_state['results_df'] = process_websites_with_brand_validation(websites, brand_name)
+    
+    except Exception as e:
+        st.error(f"Error processing file: {str(e)}")
+        st.exception(e)
+elif uploaded_file and not brand_name:
+    st.warning("Please enter a brand name to validate retailers.")
+elif brand_name and not uploaded_file:
+    st.info("Please upload a file with retailer URLs.")
+
+# Display results if available
+if st.session_state['results_df'] is not None:
+    st.subheader("Validation Results")
+    
+    # Display valid retailers first
+    valid_retailers = st.session_state['results_df'][st.session_state['results_df']['Status'] == 'Valid']
+    if not valid_retailers.empty:
+        st.success(f"Found {len(valid_retailers)} valid retailers for {brand_name}")
+        st.dataframe(valid_retailers)
     else:
-        st.warning("No potential retail partners found. Try using a more specific brand name or check the website URL.")
+        st.warning(f"No confirmed valid retailers found for {brand_name}")
     
-    # Return the number of results for bulk processing
-    return len(verified_results) if verified_results else 0
-
-# Input method selection
-input_method = st.radio("Choose input method:", ["Single URL", "Bulk Upload from Excel"])
-
-if input_method == "Single URL":
-    # Single URL input with brand name option
+    # Display unverified retailers
+    unverified_retailers = st.session_state['results_df'][st.session_state['results_df']['Status'] == 'Unverified']
+    if not unverified_retailers.empty:
+        st.info(f"{len(unverified_retailers)} retailers could not be definitively verified")
+        with st.expander("View unverified retailers"):
+            st.dataframe(unverified_retailers)
+    
+    # Display invalid retailers
+    invalid_retailers = st.session_state['results_df'][st.session_state['results_df']['Status'] == 'Invalid']
+    if not invalid_retailers.empty:
+        with st.expander(f"View {len(invalid_retailers)} invalid retailers"):
+            st.dataframe(invalid_retailers)
+    
+    # Download options
+    st.subheader("Download Results")
     col1, col2 = st.columns(2)
     
-    with col1:
-        url_input = st.text_input("Enter merchant website URL:", placeholder="e.g., trysnow.com")
+    # Download as CSV
+    csv = st.session_state['results_df'].to_csv(index=False)
+    col1.download_button(
+        label="Download as CSV",
+        data=csv,
+        file_name=f"{brand_name}_retailer_validation.csv",
+        mime="text/csv"
+    )
     
-    with col2:
-        brand_name_input = st.text_input("Enter full brand name (optional):", placeholder="e.g., Snow Cosmetics")
+    # Download as Excel
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        st.session_state['results_df'].to_excel(writer, index=False, sheet_name='Retailer Validation')
     
-    # Explanation of dual search
-    st.info("Providing both the website URL and brand name improves search accuracy. The brand name helps identify partnerships that might not be evident from the domain name alone.")
-    
-    # Run the analysis when a button is clicked for single URL
-    if st.button("Find B2B Partners for Single URL"):
-        analyze_merchant(url_input, brand_name_input)
-else:
-    # Bulk upload from Excel
-    st.write("### Upload Excel file with merchant URLs")
-    
-    uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
-    
-    if uploaded_file is not None:
-        # Load the Excel file
-        try:
-            df_excel = pd.read_excel(uploaded_file)
-            
-            # Display preview of the uploaded file
-            st.write("Preview of uploaded Excel file:")
-            st.dataframe(df_excel.head())
-            
-            # Let user select the column containing URLs
-            if len(df_excel.columns) > 0:
-                url_column = st.selectbox(
-                    "Select the column containing merchant URLs:", 
-                    options=df_excel.columns
-                )
-                
-                # Option to select brand name column
-                has_brand_names = st.checkbox("My spreadsheet also contains brand names")
-                
-                if has_brand_names:
-                    brand_name_column = st.selectbox(
-                        "Select the column containing brand names:",
-                        options=[col for col in df_excel.columns if col != url_column]
-                    )
-                
-                # Process in batches to avoid overloading
-                max_urls = st.slider("Maximum number of URLs to process", 
-                                    min_value=1, max_value=50, value=10)
-                
-                # Run bulk analysis
-                if st.button("Find B2B Partners for All URLs"):
-                    # Check if there's a brand name column
-                    brand_name_column = None
-                    if 'brand_name_column' in locals():
-                        brand_name_column = brand_name_column
-                    elif any(col.lower() in ['brand', 'brand name', 'company', 'company name'] for col in df_excel.columns):
-                        possible_columns = [col for col in df_excel.columns if col.lower() in ['brand', 'brand name', 'company', 'company name']]
-                        brand_name_column = possible_columns[0]
-                        st.info(f"Using '{brand_name_column}' as the brand name column.")
-                    
-                    # Filter out empty URLs
-                    valid_urls = df_excel[url_column].dropna().tolist()[:max_urls]
-                    
-                    if not valid_urls:
-                        st.error("No valid URLs found in the selected column.")
-                    else:
-                        st.write(f"Processing {len(valid_urls)} URLs...")
-                        
-                        # Create container for results
-                        all_results = []
-                        
-                        # Progress bar for overall processing
-                        progress_bar = st.progress(0)
-                        
-                        # Process each URL
-                        for i, url in enumerate(valid_urls):
-                            # Get corresponding brand name if available
-                            brand_name = ""
-                            if brand_name_column and i < len(df_excel):
-                                brand_name = df_excel.iloc[i][brand_name_column]
-                                if pd.isna(brand_name):
-                                    brand_name = ""
-                                else:
-                                    brand_name = str(brand_name)
-                            
-                            display_text = f"URL: {url}"
-                            if brand_name:
-                                display_text += f" | Brand: {brand_name}"
-                                
-                            st.write(f"### Processing {i+1}/{len(valid_urls)}: {display_text}")
-                            
-                            # Clean the URL if needed
-                            if not str(url).startswith('http'):
-                                url = 'https://' + str(url)
-                            
-                            # Format for display
-                            display_url = str(url).replace('https://', '').replace('http://', '').rstrip('/')
-                            
-                            # Quick analysis for bulk processing
-                            st.write(f"Analyzing partnerships for: **{display_url}**")
-                            
-                            # Generate results directly without visual simulation for bulk processing
-                            results = generate_results(display_url, brand_name)
-                            
-                            # Verify each result - change from 90%+ threshold to all results
-                            verified_results = []
-                            all_verified_results = []
-                            for result in results:
-                                # Get verification details
-                                verification_score, verification_source, verification_url = verify_retailer_presence(
-                                    result['retailer'], brand_name
-                                )
-                                
-                                # Add verification data to result
-                                result['verification_score'] = verification_score
-                                result['verification_source'] = verification_source
-                                result['verification_url'] = verification_url
-                                result['merchant_url'] = display_url
-                                
-                                # Add all results
-                                all_verified_results.append(result)
-                                
-                                # Track high confidence separately
-                                if verification_score >= 90:
-                                    verified_results.append(result)
-                            
-                            if all_verified_results:
-                                # Add to combined results
-                                all_results.extend(all_verified_results)
-                                
-                                # Show mini summary
-                                st.write(f"✅ Found {len(all_verified_results)} retail partners for {display_url} ({len(verified_results)} highly verified)")
-                            else:
-                                st.write(f"⚠️ No retail partners found for {display_url}")
-                            
-                            # Update progress
-                            progress_bar.progress((i + 1) / len(valid_urls))
-                            
-                            # Display combined results if any
-                            if all_results:
-                                st.write("## Combined Results Summary")
-                                
-                                # Convert to DataFrame
-                                df_results = pd.DataFrame(all_results)
-                                
-                                # Display table of all results
-                                st.write("All potential retail partners with verification scores")
-                                st.dataframe(df_results)
-                                
-                                # Create summary visualization
-                                st.write("### Top Retailers Across All Merchants")
-                                retailer_counts = df_results['retailer'].value_counts().head(10)
-                                
-                                fig, ax = plt.subplots(figsize=(10, 6))
-                                retailer_counts.plot(kind='bar', ax=ax, color='green')
-                                plt.tight_layout()
-                                st.pyplot(fig)
-                                
-                                # Download option
-                                csv = df_results.to_csv(index=False)
-                                st.download_button(
-                                    label="Download Verified Results as CSV",
-                                    data=csv,
-                                    file_name=f"highly_verified_retail_partners.csv",
-                                    mime="text/csv"
-                                )
-                            
-                            # Create Excel report with multiple sheets
-                            buffer = BytesIO()
-                            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                                # All results sheet
-                                df_results.to_excel(writer, sheet_name='Verified Results (90%+)', index=False)
-                                
-                                # Summary by merchant
-                                summary_by_merchant = df_results.groupby('merchant_url').agg({
-                                    'retailer': 'count',
-                                    'verification_score': 'mean'
-                                }).reset_index()
-                                summary_by_merchant.columns = ['Merchant', 'Number of Verified Partners', 'Average Verification Score']
-                                summary_by_merchant.to_excel(writer, sheet_name='Merchant Summary', index=False)
-                                
-                                # Summary by retailer
-                                summary_by_retailer = df_results.groupby('retailer').agg({
-                                    'merchant_url': 'count',
-                                    'verification_score': 'mean'
-                                }).reset_index()
-                                summary_by_retailer.columns = ['Retailer', 'Number of Merchants', 'Average Verification Score']
-                                summary_by_retailer = summary_by_retailer.sort_values('Number of Merchants', ascending=False)
-                                summary_by_retailer.to_excel(writer, sheet_name='Retailer Summary', index=False)
-                                
-                                # Verification methods summary
-                                verification_methods = df_results['verification_source'].value_counts().reset_index()
-                                verification_methods.columns = ['Verification Method', 'Count']
-                                verification_methods.to_excel(writer, sheet_name='Verification Methods', index=False)
-                                
-                            st.download_button(
-                                label="Download Complete Verified Results as Excel Report",
-                                data=buffer.getvalue(),
-                                file_name="highly_verified_retail_partners_report.xlsx",
-                                mime="application/vnd.ms-excel"
-                            )
-                        else:
-                            st.error("No highly verified retail partners (90%+ confidence) found for any of the provided URLs.")
-                
-            else:
-                st.error("The uploaded Excel file is empty.")
-        
-        except Exception as e:
-            st.error(f"Error processing the Excel file: {str(e)}")
-            st.write("Please ensure your file is a valid Excel file with a column containing URLs.")
+    buffer.seek(0)
+    col2.download_button(
+        label="Download as Excel",
+        data=buffer,
+        file_name=f"{brand_name}_retailer_validation.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
-# Footer with simple information
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center;">
-    <p>Developed for business development representatives to discover verified retail partnerships</p>
-</div>
-""", unsafe_allow_html=True)
+# Help section
+with st.expander("Help & Information"):
+    st.write("""
+    ### About This App
+    
+    This app validates retailers for a specific brand by:
+    1. Checking Google and Google Shopping for evidence that the retailer sells the brand
+    2. Directly visiting the retailer's website to confirm brand presence
+    3. Extracting keywords from validated retailer websites
+    
+    ### Validation Levels
+    
+    - **Valid**: Confirmed to stock the brand through Google Shopping or direct website check
+    - **Unverified**: Could not definitively confirm or deny if the retailer stocks the brand
+    - **Invalid**: Evidence suggests the retailer does not stock the brand
+    
+    ### Tips for Best Results
+    
+    - Use complete brand names (e.g., "Nike" instead of "N")
+    - For more accurate results, include fewer websites in each batch (20-30)
+    - Some websites may block automated checks - these will appear as "Unverified"
+    - The app uses Google Shopping and Google Search to verify retailers
+    """)
