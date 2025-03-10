@@ -14,7 +14,7 @@ def search_google_shopping(brand_name, brand_url, industry, filters, num_results
     Uses Google Custom Search API to get Google Shopping results for a product.
     Allows additional filtering based on user inputs such as brand URL and industry.
     """
-    query = f"{brand_name} {industry} {brand_url}"
+    query = f"{brand_name} {industry} {brand_url} buy online OR purchase OR retailer OR store"
     if filters:
         query += " " + " ".join(filters)
     
