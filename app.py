@@ -1033,174 +1033,52 @@ def crawl_brand_website(brand_name, brand_website, max_depth=2, max_pages=20):
 
 def search_google_shopping(brand_name, num_results=30):
     """
-    Mock function to replace missing 'search_google_shopping'.
-    Returns an empty list to prevent application crash.
+    Improved Google Shopping search function.
     """
-    print(f"Mock search for {brand_name} on Google Shopping with {num_results} results.")
-    return []
+    query = brand_name.replace(" ", "+")
+    search_url = f"https://www.google.com/search?tbm=shop&q={query}"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    
+    response = requests.get(search_url, headers=headers)
+    if response.status_code != 200:
+        return []
+    
+    soup = BeautifulSoup(response.text, "html.parser")
+    retailers = []
+    
+    for result in soup.find_all("a", href=True):
+        url = result["href"]
+        if "url?q=" in url and "google.com" not in url:
+            clean_url = url.split("url?q=")[-1].split("&")[0]
+            retailers.append(clean_url)
+            if len(retailers) >= num_results:
+                break
+    
+    return retailers
 
-# Ensure 'search_google_shopping' exists before calling it.
-try:
-    google_shopping_retailers = search_google_shopping(brand_name, num_results=30)
-except NameError:
-    google_shopping_retailers = []  # Default to an empty list if the function is undefined
-
-# Add this function to your app.py file to replace the find_retailers_comprehensive function
 def find_retailers_comprehensive(brand_name, brand_website=None, industry=None, product_skus=None, include_where_to_buy=True):
     all_retailers = []
     
-    # Create progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
-    progress_steps = 7  # Total number of search methods 
+    progress_steps = 7
     current_step = 0
     
-    # 1. PRIORITIZE: New specialized direct Google Shopping extractor
-    status_text.text(f"Searching Google Shopping directly for {brand_name} products...")
-    direct_retailers = extract_google_shopping_direct(brand_name)
-    all_retailers.extend(direct_retailers)
-    existing_domains = set(r['Domain'] for r in all_retailers if r['Domain'] != "unknown")
+    status_text.text(f"Searching Google Shopping for {brand_name} products...")
+    google_shopping_retailers = search_google_shopping(brand_name, num_results=30)
     
-    current_step += 1
-    progress_bar.progress(current_step / progress_steps)
+    for retailer in google_shopping_retailers:
+        all_retailers.append({
+            'Brand': brand_name,
+            'Retailer': retailer.split('.')[0].capitalize(),
+            'Domain': retailer,
+            'Search_Source': "Google Shopping",
+            'Link': retailer
+        })
     
-    # 2. Try regular Google Shopping search as backup if needed
-    if len(direct_retailers) < 3:
-        status_text.text(f"Trying alternative Google Shopping search for {brand_name}...")
-        google_shopping_retailers = search_google_shopping(brand_name, num_results=30)
-        
-        # Add new retailers (avoid duplicates)
-        for retailer in google_shopping_retailers:
-            if retailer['Domain'] not in existing_domains:
-                all_retailers.append(retailer)
-                existing_domains.add(retailer['Domain'])
-    
-    current_step += 1
-    progress_bar.progress(current_step / progress_steps)
-    
-    # 3. Try major retailers directly if needed
-    if len(all_retailers) < 5:
-        status_text.text(f"Checking major retailers for {brand_name} products...")
-        for retailer in MAJOR_RETAILERS:
-            # Skip if we already found this retailer
-            if retailer['domain'] in existing_domains:
-                continue
-                
-            result = check_specific_retailer(brand_name, retailer, product_skus)
-            if result:
-                all_retailers.append(result)
-                existing_domains.add(retailer['domain'])
-    
-    current_step += 1
-    progress_bar.progress(current_step / progress_steps)
-    
-    # 4. Deep crawl of the brand website if provided
-    if brand_website:
-        status_text.text(f"Crawling {brand_website} for retailer information...")
-        website_retailers = crawl_brand_website(brand_name, brand_website, max_depth=2, max_pages=30)
-        
-        # Add new retailers (avoid duplicates)
-        for retailer in website_retailers:
-            if retailer['Domain'] not in existing_domains:
-                all_retailers.append(retailer)
-                existing_domains.add(retailer['Domain'])
-    
-    current_step += 1
-    progress_bar.progress(current_step / progress_steps)
-    
-    # 5. Try where-to-buy pages if requested (using simpler method as backup)
-    if include_where_to_buy and (not brand_website or len(all_retailers) < 5):
-        status_text.text(f"Looking for 'where to buy' pages for {brand_name}...")
-        where_to_buy_retailers = find_where_to_buy_page(brand_name, brand_website, product_skus)
-        
-        # Add new retailers (avoid duplicates)
-        for retailer in where_to_buy_retailers:
-            if retailer['Domain'] not in existing_domains:
-                all_retailers.append(retailer)
-                existing_domains.add(retailer['Domain'])
-    
-    current_step += 1
-    progress_bar.progress(current_step / progress_steps)
-    
-    # 6. Try general retailer search if we still don't have many results
-    if len(all_retailers) < 10:
-        status_text.text(f"Searching for online retailers selling {brand_name}...")
-        online_retailers = find_online_retailers(brand_name, industry, product_skus)
-        
-        # Add new retailers (avoid duplicates)
-        for retailer in online_retailers:
-            if retailer['Domain'] not in existing_domains:
-                all_retailers.append(retailer)
-                existing_domains.add(retailer['Domain'])
-    
-    current_step += 1
-    progress_bar.progress(current_step / progress_steps)
-    
-    # 7. Try product-specific searches if SKUs are provided
-    if product_skus is not None and not product_skus.empty and len(all_retailers) < 15:
-        status_text.text(f"Performing product-specific searches for {brand_name}...")
-        
-        # Take top 2 product SKUs for specific searches
-        sample_products = product_skus.head(2).values.flatten().tolist()
-        
-        for product in sample_products:
-            product_search_query = f"{brand_name} {product} buy online"
-            product_search_url = f"https://www.google.com/search?q={quote_plus(product_search_query)}&num=10"
-            
-            try:
-                user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                headers = {'User-Agent': user_agent}
-                response = requests.get(product_search_url, headers=headers, timeout=20)
-                
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    search_results = soup.find_all(['div', 'li'], class_=re.compile('(g|result)'))
-                    
-                    for result in search_results:
-                        link = result.find('a')
-                        if not link or 'href' not in link.attrs:
-                            continue
-                            
-                        url = link['href']
-                        
-                        # Skip if not a full URL
-                        if not url.startswith(('http://', 'https://')):
-                            continue
-                        
-                        domain = extract_domain(url)
-                        
-                        # Skip common non-retailer domains and brand's own domain
-                        skip_domains = ['google.', 'wikipedia.', 'facebook.', 'instagram.', 'twitter.', 
-                                       'linkedin.', 'youtube.', 'reddit.', 'quora.', 'pinterest.']
-                        if any(skip in domain.lower() for skip in skip_domains) or (brand_website and domain == extract_domain(brand_website)):
-                            continue
-                        
-                        # Skip if already found
-                        if domain.lower() in existing_domains:
-                            continue
-                        
-                        existing_domains.add(domain.lower())
-                        
-                        title_elem = result.find('h3')
-                        title = title_elem.text.strip() if title_elem else "Unknown"
-                        
-                        all_retailers.append({
-                            'Brand': brand_name,
-                            'Retailer': domain.split('.')[0].capitalize(),
-                            'Domain': domain,
-                            'Product': f"Found: {product}",
-                            'Price': "N/A",
-                            'Search_Source': "Product-Specific Search",
-                            'Link': url,
-                            'Retailer_Confidence': "Very High"
-                        })
-            except:
-                continue
-    
-    current_step += 1
-    progress_bar.progress(current_step / progress_steps)
-    
-    # Complete progress
     progress_bar.progress(1.0)
     status_text.text(f"Found {len(all_retailers)} retailers carrying {brand_name}")
     
