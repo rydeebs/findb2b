@@ -2,6 +2,7 @@ import os
 import streamlit as st
 import pandas as pd
 import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 # Load API keys from a separate .env file
