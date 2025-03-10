@@ -1510,3 +1510,6 @@ if st.session_state['results_df'] is not None:
         st.session_state['product_skus'] = None
         st.session_state['bulk_product_skus'] = None
         st.experimental_rerun()
+
+print(response.text[:1000])  # Check first 1000 characters of HTML
+
