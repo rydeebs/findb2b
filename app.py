@@ -5,7 +5,7 @@ import requests
 
 # Replace with your actual Google API Key and Custom Search Engine ID
 GOOGLE_API_KEY = "AIzaSyAQUyfWVnYELkXvkPo0-owYGyO2K-jlqq0"
-GOOGLE_CSE_ID = "22906673011-tj162qmapsaj1u9iiqivllrugnm26q3d.apps.googleusercontent.com"
+GOOGLE_CSE_ID = "8226195a5f1ff4de2"
 
 def search_google_shopping(brand_name, num_results=10):
     """
