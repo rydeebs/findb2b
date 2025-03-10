@@ -2,19 +2,26 @@ import os
 import streamlit as st
 import pandas as pd
 import requests
+from dotenv import load_dotenv
 
-# Replace with your actual Google API Key and Custom Search Engine ID
-GOOGLE_API_KEY = "AIzaSyAQUyfWVnYELkXvkPo0-owYGyO2K-jlqq0"
-GOOGLE_CSE_ID = "8226195a5f1ff4de2"
+# Load API keys from a separate .env file
+load_dotenv()
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 
-def search_google_shopping(brand_name, num_results=10):
+def search_google_shopping(brand_name, brand_url, industry, filters, num_results=10):
     """
     Uses Google Custom Search API to get Google Shopping results for a product.
+    Allows additional filtering based on user inputs such as brand URL and industry.
     """
+    query = f"{brand_name} {industry} {brand_url}"
+    if filters:
+        query += " " + " ".join(filters)
+    
     search_url = "https://www.googleapis.com/customsearch/v1"
     
     params = {
-        "q": brand_name + " buy online",
+        "q": query,
         "cx": GOOGLE_CSE_ID,
         "key": GOOGLE_API_KEY,
         "num": num_results
@@ -38,8 +45,8 @@ def search_google_shopping(brand_name, num_results=10):
     
     return retailers
 
-def find_retailers_comprehensive(brand_name):
-    all_retailers = search_google_shopping(brand_name)
+def find_retailers_comprehensive(brand_name, brand_url, industry, filters):
+    all_retailers = search_google_shopping(brand_name, brand_url, industry, filters)
     
     return all_retailers
 
@@ -47,9 +54,13 @@ def find_retailers_comprehensive(brand_name):
 st.title("Brand Retailer Finder")
 
 brand_name = st.text_input("Enter Brand Name:")
+brand_url = st.text_input("Enter Brand Website URL:")
+industry = st.text_input("Enter Industry:")
+filters = st.text_input("Enter Additional Filters (e.g., 'best price', 'fast shipping', 'US only'):")
+filters_list = filters.split(',') if filters else []
 
 if st.button("Find Retailers"):
-    results = find_retailers_comprehensive(brand_name)
+    results = find_retailers_comprehensive(brand_name, brand_url, industry, filters_list)
     
     if results:
         df = pd.DataFrame(results)
