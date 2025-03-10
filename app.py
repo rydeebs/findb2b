@@ -3,15 +3,13 @@ import streamlit as st
 import pandas as pd
 import requests
 from dotenv import load_dotenv
-from bs4 import BeautifulSoup
-
 
 # Load API keys from a separate .env file
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 
-def search_google_shopping(brand_name, brand_url, industry, filters, num_results=10):
+def search_google_shopping_api(brand_name, brand_url, industry, filters, num_results=20):
     """
     Uses Google Shopping directly to find retailers carrying the brand's products.
     """
@@ -98,7 +96,7 @@ def search_google_shopping(brand_name, brand_url, industry, filters, num_results
     return retailers
 
 def find_retailers_comprehensive(brand_name, brand_url, industry, filters):
-    all_retailers = search_google_shopping(brand_name, brand_url, industry, filters)
+    all_retailers = search_google_shopping_api(brand_name, brand_url, industry, filters)
     
     return all_retailers
 
