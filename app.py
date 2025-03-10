@@ -5,7 +5,9 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import re
-from urllib.parse import urlparse, quote_plus
+from urllib.parse import urlparse, quote_plus, unquote
+import time
+import random
 
 # Load API keys from a separate .env file
 load_dotenv()
@@ -32,7 +34,8 @@ def extract_domain(url):
 
 def search_google_shopping(brand_name, brand_url=None, industry=None, filters=None):
     """
-    Directly scrapes Google Shopping results to find retailers carrying the brand's products.
+    Enhanced function to scrape Google Shopping results to find retailers carrying a brand.
+    Uses multiple approaches to account for different Google Shopping HTML structures.
     """
     # Clean up brand URL if provided
     brand_domain = extract_domain(brand_url) if brand_url else None
@@ -52,22 +55,33 @@ def search_google_shopping(brand_name, brand_url=None, industry=None, filters=No
     encoded_query = quote_plus(query)
     
     # Direct Google Shopping URL
-    search_url = f"https://www.google.com/search?q={encoded_query}&tbm=shop"
+    search_url = f"https://www.google.com/search?q={encoded_query}&tbm=shop&num=100"
     
-    # Set user agent to avoid being blocked
+    # Use a realistic user agent
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0"
+    ]
+    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "User-Agent": random.choice(user_agents),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
-        "Cache-Control": "max-age=0"
+        "Cache-Control": "max-age=0",
+        "TE": "Trailers"
     }
+    
+    retailers = []
+    seen_domains = set()
     
     try:
         # Make the request to Google Shopping
-        response = requests.get(search_url, headers=headers, timeout=15)
+        st.info(f"Searching Google Shopping for: {query}")
+        response = requests.get(search_url, headers=headers, timeout=20)
         
         if response.status_code != 200:
             st.error(f"Google Shopping search failed: {response.status_code}")
@@ -76,163 +90,230 @@ def search_google_shopping(brand_name, brand_url=None, industry=None, filters=No
         # Parse the HTML content
         soup = BeautifulSoup(response.text, "html.parser")
         
-        # Find all shopping items
-        retailers = []
-        seen_domains = set()
+        # Debug: Save HTML for inspection
+        # with open("google_shopping.html", "w", encoding="utf-8") as f:
+        #     f.write(response.text)
         
-        # Look for shopping items with merchant information
-        # Google Shopping typically has elements with merchants mentioned
-        shopping_items = soup.find_all(['div', 'span'], class_=re.compile('(sh-|merchant|seller)'))
+        # APPROACH 1: Look for merchant elements using various class patterns
+        merchant_classes = ['merchant', 'sh-dlr__list-result', 'sh-dlr__content', 'a5OGkf', 'E5ocAb', 
+                           'aULzUe', 'kPMwsc', 'sh-np__click-target', 'BXIkFb']
         
-        for item in shopping_items:
-            # Try to find merchant name
-            merchant_text = item.text.strip()
+        for class_name in merchant_classes:
+            merchant_elements = soup.find_all(class_=re.compile(class_name))
             
-            # Check if this element contains merchant information
-            if not merchant_text or len(merchant_text) < 3:
-                continue
+            for element in merchant_elements:
+                links = element.find_all('a', href=True)
                 
-            # Look for links near this element
-            link_element = None
-            parent = item.parent
-            
-            # Look up to 3 levels up for links
-            for _ in range(3):
-                if parent:
-                    link_element = parent.find('a', href=True)
-                    if link_element:
-                        break
-                    parent = parent.parent
-                else:
-                    break
+                for link in links:
+                    url = link['href']
                     
-            if not link_element:
-                continue
+                    # Extract actual URL from Google redirect
+                    if 'google.com/url' in url or 'google.com/aclk' in url:
+                        if 'url=' in url:
+                            match = re.search(r'url=([^&]+)', url)
+                            if match:
+                                url = unquote(match.group(1))
+                        elif 'adurl=' in url:
+                            match = re.search(r'adurl=([^&]+)', url)
+                            if match:
+                                url = unquote(match.group(1))
                     
-            url = link_element['href']
-            
-            # Handle Google redirect URLs
-            if 'google.com/url' in url or 'google.com/aclk' in url:
-                # Extract the actual destination URL
-                if 'url=' in url:
-                    match = re.search(r'url=([^&]+)', url)
-                    if match:
-                        url = match.group(1)
-                elif 'adurl=' in url:
-                    match = re.search(r'adurl=([^&]+)', url)
-                    if match:
-                        url = match.group(1)
-                        
-            # Skip if not a proper URL
-            if not url or not url.startswith(('http://', 'https://')):
-                continue
+                    # Skip if not a proper URL
+                    if not url.startswith(('http://', 'https://')):
+                        continue
+                    
+                    domain = extract_domain(url)
+                    
+                    # Skip if it's the brand's own site
+                    if brand_domain and (domain == brand_domain or brand_domain in domain):
+                        continue
+                    
+                    # Skip common non-retailer sites
+                    skip_domains = ['google.', 'facebook.', 'instagram.', 'pinterest.', 'twitter.', 
+                                   'linkedin.', 'tiktok.', 'youtube.', 'reddit.']
+                    if any(skip in domain.lower() for skip in skip_domains):
+                        continue
+                    
+                    # Skip if already found
+                    if domain in seen_domains:
+                        continue
+                    
+                    seen_domains.add(domain)
+                    
+                    # Try to find merchant name
+                    merchant_name = None
+                    merchant_elem = element.find(text=re.compile(r'from|by|sold by|at', re.IGNORECASE))
+                    
+                    if merchant_elem:
+                        text = merchant_elem.strip()
+                        match = re.search(r'(?:from|by|sold by|at)\s+([A-Za-z0-9\s\.\-&\']+)', text, re.IGNORECASE)
+                        if match:
+                            merchant_name = match.group(1).strip()
+                    
+                    if not merchant_name:
+                        # Extract from domain
+                        merchant_name = domain.split('.')[0].capitalize()
+                    
+                    # Extract price if available
+                    price = "N/A"
+                    price_pattern = re.compile(r'\$[\d,]+\.\d{2}')
+                    price_match = element.find(text=price_pattern)
+                    if price_match:
+                        match = price_pattern.search(price_match)
+                        if match:
+                            price = match.group(0)
+                    
+                    # Get product title
+                    product_title = "Product page"
+                    title_elem = element.find(['h3', 'h4'])
+                    if title_elem:
+                        product_title = title_elem.text.strip()
+                    
+                    retailers.append({
+                        "Retailer": merchant_name,
+                        "Domain": domain,
+                        "Link": url,
+                        "Product": product_title,
+                        "Price": price,
+                        "Source": "Google Shopping"
+                    })
+        
+        # APPROACH 2: Find all external links in the page
+        if len(retailers) < 2:
+            for link in soup.find_all('a', href=True):
+                url = link['href']
                 
-            # Extract domain
-            domain = extract_domain(url)
-            
-            # Skip if it's the brand's own site
-            if brand_domain and (domain == brand_domain or brand_domain in domain):
-                continue
-                
-            # Skip social media and common non-retailer sites
-            skip_domains = ['google.', 'facebook.', 'instagram.', 'pinterest.', 'twitter.', 
-                           'linkedin.', 'tiktok.', 'youtube.', 'reddit.']
-            if any(skip in domain.lower() for skip in skip_domains):
-                continue
-                
-            # Skip if we've already seen this domain
-            if domain in seen_domains:
-                continue
-                
-            # Add to seen domains
-            seen_domains.add(domain)
-            
-            # Get retailer name - either from the merchant text or domain
-            retailer_name = merchant_text if merchant_text else domain.split('.')[0].capitalize()
-            
-            # Extract price if available
-            price = "N/A"
-            price_elem = item.find(text=re.compile(r'\$[\d,]+\.\d{2}'))
-            if price_elem:
-                price = price_elem
-                
-            # Check if this appears to be a product page
-            product_title = "Product page"
-            title_elem = link_element.get_text() if link_element else None
-            if title_elem:
-                product_title = title_elem
-                
-            retailers.append({
-                "Retailer": retailer_name,
-                "Domain": domain,
-                "Link": url,
-                "Product": product_title,
-                "Price": price,
-                "Source": "Google Shopping"
-            })
-            
-        # If we didn't find retailers through the specific elements, try a more general approach
-        if not retailers:
-            # Look for all links in the shopping results
-            for link in soup.find_all("a", href=True):
-                url = link["href"]
-                
-                # Skip internal Google links
+                # Only look at Google Shopping redirects
                 if not ('url=' in url or 'google.com/aclk' in url):
                     continue
-                    
-                # Extract the actual URL
+                
+                # Extract actual URL
                 if 'url=' in url:
                     match = re.search(r'url=([^&]+)', url)
                     if match:
-                        url = match.group(1)
+                        url = unquote(match.group(1))
                 elif 'adurl=' in url:
                     match = re.search(r'adurl=([^&]+)', url)
                     if match:
-                        url = match.group(1)
+                        url = unquote(match.group(1))
                 
                 # Skip if not a proper URL
                 if not url.startswith(('http://', 'https://')):
                     continue
-                    
+                
                 domain = extract_domain(url)
                 
                 # Skip if it's the brand's own site
                 if brand_domain and (domain == brand_domain or brand_domain in domain):
                     continue
-                    
-                # Skip if already found or if it's the brand domain
+                
+                # Skip if already found
                 if domain in seen_domains:
                     continue
-                    
-                # Skip social media and common non-retailer sites
+                
+                # Skip common non-retailer sites
                 skip_domains = ['google.', 'facebook.', 'instagram.', 'pinterest.', 'twitter.', 
-                               'linkedin.', 'tiktok.', 'youtube.', 'reddit.']
+                               'linkedin.', 'tiktok.', 'youtube.', 'reddit.', 'wikipedia.']
                 if any(skip in domain.lower() for skip in skip_domains):
                     continue
                 
                 seen_domains.add(domain)
                 
+                # Find the nearest text that might be the title
+                parent = link.parent
+                product_title = "Product page"
+                
+                # Look up to 2 levels to find title-like text
+                for _ in range(2):
+                    if parent:
+                        title_elem = parent.find(['h3', 'h4', 'div'], class_=re.compile('title|name|product', re.IGNORECASE))
+                        if title_elem:
+                            product_title = title_elem.text.strip()
+                            break
+                        parent = parent.parent
+                    else:
+                        break
+                
+                # Use link text if no title found
+                if product_title == "Product page" and link.text.strip():
+                    product_title = link.text.strip()
+                
                 retailers.append({
                     "Retailer": domain.split('.')[0].capitalize(),
                     "Domain": domain,
                     "Link": url,
-                    "Product": link.text.strip() if link.text.strip() else "Product page",
+                    "Product": product_title,
                     "Price": "N/A",
                     "Source": "Google Shopping"
                 })
-                
-        return retailers
         
+        # APPROACH 3: Try a different shopping URL format
+        if len(retailers) < 3:
+            # Use the shopping tab format
+            alt_url = f"https://www.google.com/search?q={encoded_query}+buy+online&tbm=shop"
+            
+            response = requests.get(alt_url, headers=headers, timeout=20)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                
+                # Look for all links with redirects
+                for link in soup.find_all('a', href=True):
+                    url = link['href']
+                    
+                    # Only look at Google Shopping redirects
+                    if not ('url=' in url or 'google.com/aclk' in url):
+                        continue
+                    
+                    # Extract actual URL
+                    if 'url=' in url:
+                        match = re.search(r'url=([^&]+)', url)
+                        if match:
+                            url = unquote(match.group(1))
+                    elif 'adurl=' in url:
+                        match = re.search(r'adurl=([^&]+)', url)
+                        if match:
+                            url = unquote(match.group(1))
+                    
+                    # Skip if not a proper URL
+                    if not url.startswith(('http://', 'https://')):
+                        continue
+                    
+                    domain = extract_domain(url)
+                    
+                    # Skip if it's the brand's own site
+                    if brand_domain and (domain == brand_domain or brand_domain in domain):
+                        continue
+                    
+                    # Skip if already found
+                    if domain in seen_domains:
+                        continue
+                    
+                    # Skip common non-retailer sites
+                    skip_domains = ['google.', 'facebook.', 'instagram.', 'pinterest.', 'twitter.', 
+                                   'linkedin.', 'tiktok.', 'youtube.', 'reddit.', 'wikipedia.']
+                    if any(skip in domain.lower() for skip in skip_domains):
+                        continue
+                    
+                    seen_domains.add(domain)
+                    
+                    retailers.append({
+                        "Retailer": domain.split('.')[0].capitalize(),
+                        "Domain": domain,
+                        "Link": url,
+                        "Product": link.text.strip() if link.text.strip() else "Product page",
+                        "Price": "N/A",
+                        "Source": "Google Shopping (Alternative)"
+                    })
+        
+        return retailers
+    
     except Exception as e:
         st.error(f"Error scraping Google Shopping: {str(e)}")
         return []
 
 def find_retailers_comprehensive(brand_name, brand_url, industry, filters):
     """Main function to find retailers through multiple Google Shopping searches"""
-    st.info(f"Searching for retailers that carry {brand_name} on Google Shopping...")
-    
-    # Try multiple search variations to maximize results
     all_retailers = []
     seen_domains = set()
     
@@ -245,25 +326,59 @@ def find_retailers_comprehensive(brand_name, brand_url, industry, filters):
             all_retailers.append(retailer)
             seen_domains.add(domain)
     
-    # If we don't have enough results, try variations
+    # If we don't have enough results, try with a specific "buy" keyword
     if len(all_retailers) < 5:
-        # Try with just brand name
-        retailers = search_google_shopping(brand_name, brand_url, None, None)
+        st.info("Trying alternative search to find more retailers...")
+        buy_search = f"{brand_name} buy"
+        retailers = search_google_shopping(buy_search, brand_url, industry, filters)
+        
         for retailer in retailers:
             domain = retailer["Domain"]
             if domain not in seen_domains:
                 all_retailers.append(retailer)
                 seen_domains.add(domain)
     
-    # Try with a "buy" keyword if still not enough results
+    # Try with a "where to buy" keyword if still not enough results
     if len(all_retailers) < 5:
-        buy_filters = ["buy online"] if not filters else filters + ["buy online"]
-        retailers = search_google_shopping(brand_name, brand_url, industry, buy_filters)
+        st.info("Searching for 'where to buy' information...")
+        where_to_buy_search = f"{brand_name} where to buy"
+        retailers = search_google_shopping(where_to_buy_search, brand_url, industry, filters)
+        
         for retailer in retailers:
             domain = retailer["Domain"]
             if domain not in seen_domains:
                 all_retailers.append(retailer)
                 seen_domains.add(domain)
+    
+    # Add a direct check for major retailers if specific keywords are found
+    if "cosmetics" in (industry or "").lower() or "makeup" in (industry or "").lower() or "beauty" in (industry or "").lower():
+        beauty_retailers = ["target.com", "qvc.com", "amazon.com", "ulta.com", "sephora.com"]
+        
+        for retailer in beauty_retailers:
+            if retailer not in seen_domains:
+                specific_search = f"{brand_name} site:{retailer}"
+                search_url = f"https://www.google.com/search?q={quote_plus(specific_search)}"
+                
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+                
+                try:
+                    response = requests.get(search_url, headers=headers, timeout=10)
+                    
+                    if response.status_code == 200 and "did not match any documents" not in response.text:
+                        # Results found, this retailer likely carries the brand
+                        all_retailers.append({
+                            "Retailer": retailer.split('.')[0].capitalize(),
+                            "Domain": retailer,
+                            "Link": f"https://{retailer}/search?q={quote_plus(brand_name)}",
+                            "Product": f"{brand_name} products",
+                            "Price": "N/A",
+                            "Source": "Direct Retailer Check"
+                        })
+                        seen_domains.add(retailer)
+                except:
+                    continue
     
     return all_retailers
 
@@ -298,6 +413,18 @@ if st.button("Find Retailers"):
             st.download_button("Download Results as CSV", csv, f"{brand_name}_retailers.csv", "text/csv")
         else:
             st.warning("No retailers found on Google Shopping. Try a different search term or check the brand name.")
+            
+            # Suggest direct checks
+            st.info("You can manually check these common retailers:")
+            common_retailers = {
+                "Amazon": f"https://www.amazon.com/s?k={quote_plus(brand_name)}",
+                "Target": f"https://www.target.com/s?searchTerm={quote_plus(brand_name)}",
+                "Walmart": f"https://www.walmart.com/search?q={quote_plus(brand_name)}",
+                "QVC": f"https://www.qvc.com/content/search.html?qq={quote_plus(brand_name)}"
+            }
+            
+            for retailer, url in common_retailers.items():
+                st.markdown(f"- [{retailer}]({url})")
 
 # Display information about the app
 with st.expander("About this app"):
