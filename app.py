@@ -36,6 +36,7 @@ def search_google_shopping(brand_name, brand_url, industry, filters, num_results
     data = response.json()
     
     retailers = []
+    seen_domains = set()
     for item in data.get("items", []):
         # Skip results that match the brand's own website
         if brand_url and brand_url in item.get("link", ""):
@@ -47,6 +48,10 @@ def search_google_shopping(brand_name, brand_url, industry, filters, num_results
         # Skip results that match the brand's own website
         if brand_url and brand_url in item.get("link", ""):
             continue
+        domain = item.get("link", "").split("/")[2]  # Extract domain name
+        if domain in seen_domains:
+            continue  # Skip duplicate retailers
+        seen_domains.add(domain)
         retailers.append({
             "Title": item.get("title"),
             "Link": item.get("link"),
