@@ -2,22 +2,21 @@ import os
 import streamlit as st
 import pandas as pd
 import requests
+from dotenv import load_dotenv
 
-# Load API key from environment variables (GitHub Secrets)
+# Load API keys from a separate .env file
+load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
-
-if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
-    st.error("API keys not found! Ensure they are set as environment variables.")
 
 def search_google_shopping(brand_name, brand_url, industry, filters, num_results=10):
     """
     Uses Google Custom Search API to get Google Shopping results for a product.
     Allows additional filtering based on user inputs such as brand URL and industry.
     """
-    query_parts = [brand_name, industry, brand_url]
-    query_parts.extend(filters)
-    query = " ".join([part for part in query_parts if part])  # Remove empty values
+    query = f"{brand_name} {industry} {brand_url}"
+    if filters:
+        query += " " + " ".join(filters)
     
     search_url = "https://www.googleapis.com/customsearch/v1"
     
@@ -25,13 +24,13 @@ def search_google_shopping(brand_name, brand_url, industry, filters, num_results
         "q": query,
         "cx": GOOGLE_CSE_ID,
         "key": GOOGLE_API_KEY,
-        "num": num_results
+        "num": min(num_results, 20)
     }
 
     response = requests.get(search_url, params=params)
     
     if response.status_code != 200:
-        st.error(f"Google Search API Error {response.status_code}: {response.text}")
+        st.error(f"Google Search API Error: {response.status_code}")
         return []
     
     data = response.json()
