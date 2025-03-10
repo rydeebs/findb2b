@@ -34,8 +34,8 @@ def extract_domain(url):
 
 def search_google_shopping_api(brand_name, brand_url=None, industry=None, filters=None, num_results=20):
     """
-    Uses Google Custom Search API to get Google Shopping results for a brand.
-    Specifically targets shopping results and extracts retailer information.
+    Uses Google Custom Search API to get shopping results for a brand.
+    Specifically targets shopping & retailer related results.
     """
     # Clean up brand URL if provided
     brand_domain = extract_domain(brand_url) if brand_url else None
@@ -61,8 +61,8 @@ def search_google_shopping_api(brand_name, brand_url=None, industry=None, filter
         "q": query,
         "cx": GOOGLE_CSE_ID,
         "key": GOOGLE_API_KEY,
-        "num": min(num_results, 10),  # First batch of results
-        "searchType": "shopping"  # Specifically target shopping results
+        "num": min(num_results, 10)  # First batch of results
+        # Removed invalid searchType parameter
     }
 
     retailers = []
@@ -93,7 +93,7 @@ def search_google_shopping_api(brand_name, brand_url=None, industry=None, filter
         # If we still don't have enough retailers, try a more specific shopping search
         if len(retailers) < 5:
             # Modify the query to specifically target product listings
-            product_query = f"{brand_name} product"
+            product_query = f"{brand_name} product shop OR buy OR \"for sale\""
             params['q'] = product_query
             params.pop('start', None)  # Remove start parameter for a fresh search
             
