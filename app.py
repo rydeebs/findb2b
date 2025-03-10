@@ -9,6 +9,7 @@ import time
 import io
 import random
 import datetime
+import json
 
 # Set up page configuration
 st.set_page_config(
@@ -19,7 +20,7 @@ st.set_page_config(
 
 # Add title and description
 st.title("B2B Retailer Finder")
-st.markdown("Discover retailers that carry specific brands through Google search")
+st.markdown("Discover retailers that carry specific brands through advanced web search")
 
 # Initialize session state variables
 if 'results_df' not in st.session_state:
@@ -67,16 +68,136 @@ def extract_domain(url):
     except:
         return url
 
+# Function to get retailer info from Google search results
+def extract_retailers_from_search(soup, brand_name, search_type_name):
+    retailers = []
+    found_domains = set()
+    
+    if search_type_name == "Google Shopping":
+        # Extract shopping results
+        shopping_items = soup.find_all(['div', 'li'], class_=re.compile('(sh-dgr__content|sh-dlr__list-result)'))
+        
+        for item in shopping_items:
+            try:
+                # Extract merchant info
+                merchant_elem = item.find(['div', 'span'], class_=re.compile('(merchant|sh-dlr__merchant)'))
+                if merchant_elem:
+                    merchant_text = merchant_elem.text.strip()
+                    merchant_link = None
+                    
+                    # Try to find merchant link
+                    link = merchant_elem.find('a') or item.find('a')
+                    if link and 'href' in link.attrs:
+                        merchant_link = link['href']
+                    
+                    # Extract domain if link exists
+                    domain = extract_domain(merchant_link) if merchant_link else merchant_text
+                    
+                    # Skip if we've already found this domain
+                    if domain.lower() in found_domains:
+                        continue
+                        
+                    found_domains.add(domain.lower())
+                    
+                    # Find price if available
+                    price_elem = item.find(text=re.compile(r'\$[\d,]+\.\d{2}'))
+                    price = price_elem if price_elem else "N/A"
+                    
+                    # Find title if available
+                    title_elem = item.find('h3') or item.find('h4')
+                    title = title_elem.text.strip() if title_elem else "N/A"
+                    
+                    retailers.append({
+                        'Brand': brand_name,
+                        'Retailer': merchant_text,
+                        'Domain': domain,
+                        'Product': title,
+                        'Price': price,
+                        'Search_Source': search_type_name,
+                        'Link': merchant_link if merchant_link else "",
+                        'Retailer_Confidence': "High"
+                    })
+            except Exception as e:
+                st.error(f"Error extracting shopping result: {str(e)}")
+                continue
+    else:
+        # Extract regular search results
+        search_results = soup.find_all(['div', 'li'], class_=re.compile('(g|result)'))
+        
+        for result in search_results:
+            try:
+                # Extract title and link
+                title_elem = result.find('h3') or result.find(['a', 'h2', 'h4'], class_=re.compile('(title|heading)'))
+                if not title_elem:
+                    continue
+                    
+                link_elem = result.find('a')
+                if not link_elem or 'href' not in link_elem.attrs:
+                    continue
+                    
+                result_link = link_elem['href']
+                if not result_link.startswith(('http://', 'https://')):
+                    continue
+                    
+                # Extract domain
+                domain = extract_domain(result_link)
+                
+                # Skip Google, Wikipedia, etc.
+                skip_domains = ['google.', 'wikipedia.', 'facebook.', 'instagram.', 'twitter.', 
+                               'linkedin.', 'youtube.', 'amazon.', 'ebay.']
+                if any(skip in domain.lower() for skip in skip_domains) or domain.lower() in found_domains:
+                    continue
+                    
+                found_domains.add(domain.lower())
+                
+                # Extract snippet
+                snippet_elem = result.find(['div', 'span'], class_=re.compile('(VwiC3b|snippet|description)'))
+                snippet = snippet_elem.text.strip() if snippet_elem else "N/A"
+                
+                # Check if snippet suggests this is a retailer
+                retailer_signals = ['buy', 'shop', 'purchase', 'order', 'price', 'retailer', 'store', 
+                                    'distributor', 'dealer', 'authorized', 'official', 'stockist', 
+                                    'reseller', 'wholesale', 'supplier', 'product', 'collection']
+                
+                is_likely_retailer = any(signal in snippet.lower() for signal in retailer_signals)
+                retailer_confidence = "High" if is_likely_retailer else "Medium"
+                
+                retailers.append({
+                    'Brand': brand_name,
+                    'Retailer': title_elem.text.strip(),
+                    'Domain': domain,
+                    'Product': "N/A",
+                    'Price': "N/A",
+                    'Search_Source': search_type_name,
+                    'Link': result_link,
+                    'Retailer_Confidence': retailer_confidence
+                })
+            except Exception as e:
+                continue
+    
+    return retailers
+
 # Function to search for retailers that carry a brand
 def find_retailers_for_brand(brand_name, search_type='shopping', num_pages=3, country='us'):
     retailers = []
+    
+    # Check if input is a URL instead of a brand name
+    if '.' in brand_name and '/' in brand_name:
+        try:
+            domain = extract_domain(brand_name)
+            st.info(f"Detected URL input. Searching for retailers that carry products from: {domain}")
+            brand_name = domain
+        except:
+            pass
     
     # Rotate user agents to avoid blocking
     user_agents = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0'
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0',
+        'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36 Edg/96.0.1054.62'
     ]
     
     # Define headers with random user agent
@@ -106,6 +227,14 @@ def find_retailers_for_brand(brand_name, search_type='shopping', num_pages=3, co
         # Wholesale-focused search
         base_url = f"https://www.google.com/search?q={brand_query}+wholesale+OR+bulk+OR+b2b+OR+trade"
         search_type_name = "Wholesale Search"
+    elif search_type == 'where_to_buy':
+        # "Where to buy" search
+        base_url = f"https://www.google.com/search?q={brand_query}+where+to+buy+OR+shop+OR+purchase"
+        search_type_name = "Where to Buy"
+    elif search_type == 'partners':
+        # Partners search
+        base_url = f"https://www.google.com/search?q={brand_query}+retail+partners+OR+official+retailers+OR+store+locator"
+        search_type_name = "Partners Search"
     else:
         # Regular Google search
         base_url = f"https://www.google.com/search?q={brand_query}"
@@ -115,8 +244,6 @@ def find_retailers_for_brand(brand_name, search_type='shopping', num_pages=3, co
     if country and country.lower() != 'us':
         base_url += f"&gl={country.lower()}"
 
-    found_domains = set()  # Track domains we've already found
-    
     # Search multiple pages
     for page in range(num_pages):
         current_url = base_url
@@ -128,7 +255,7 @@ def find_retailers_for_brand(brand_name, search_type='shopping', num_pages=3, co
             time.sleep(random.uniform(1, 3))
             
             # Send request
-            response = requests.get(current_url, headers=headers, timeout=15)
+            response = requests.get(current_url, headers=headers, timeout=20)
             
             if response.status_code != 200:
                 st.warning(f"Received HTTP {response.status_code} for page {page+1}. Stopping search.")
@@ -137,101 +264,25 @@ def find_retailers_for_brand(brand_name, search_type='shopping', num_pages=3, co
             # Parse the page
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Extract search results
-            if search_type == 'shopping':
-                # Extract shopping results
-                shopping_items = soup.find_all('div', class_=re.compile('sh-dgr__content'))
+            # Extract retailers from search results
+            page_retailers = extract_retailers_from_search(soup, brand_name, search_type_name)
+            retailers.extend(page_retailers)
+            
+            # If no results found, try an alternative approach
+            if not page_retailers and page == 0:
+                st.info(f"No results found with {search_type_name}. Trying alternative search...")
                 
-                for item in shopping_items:
-                    # Extract merchant info
-                    merchant_elem = item.find('div', class_=re.compile('merchant'))
-                    if merchant_elem:
-                        merchant_text = merchant_elem.text.strip()
-                        merchant_link = None
-                        
-                        # Try to find merchant link
-                        link = merchant_elem.find('a')
-                        if link and 'href' in link.attrs:
-                            merchant_link = link['href']
-                        
-                        # Extract domain if link exists
-                        domain = extract_domain(merchant_link) if merchant_link else merchant_text
-                        
-                        # Skip if we've already found this domain
-                        if domain.lower() in found_domains:
-                            continue
-                            
-                        found_domains.add(domain.lower())
-                        
-                        # Find price if available
-                        price_elem = item.find(text=re.compile(r'\$[\d,]+\.\d{2}'))
-                        price = price_elem if price_elem else "N/A"
-                        
-                        # Find title if available
-                        title_elem = item.find('h3')
-                        title = title_elem.text.strip() if title_elem else "N/A"
-                        
-                        retailers.append({
-                            'Brand': brand_name,
-                            'Retailer': merchant_text,
-                            'Domain': domain,
-                            'Product': title,
-                            'Price': price,
-                            'Search_Source': search_type_name,  # Changed column name from 'Source' to 'Search_Source'
-                            'Link': merchant_link if merchant_link else "",
-                            'Retailer_Confidence': "High"  # Added consistent confidence field
-                        })
-            else:
-                # Extract regular search results
-                search_results = soup.find_all('div', class_=re.compile('g'))
+                # Try a more direct search
+                alt_query = f"{brand_query}+retailers"
+                alt_url = f"https://www.google.com/search?q={alt_query}"
                 
-                for result in search_results:
-                    # Extract title and link
-                    title_elem = result.find('h3')
-                    if not title_elem:
-                        continue
-                        
-                    link_elem = result.find('a')
-                    if not link_elem or 'href' not in link_elem.attrs:
-                        continue
-                        
-                    result_link = link_elem['href']
-                    if not result_link.startswith(('http://', 'https://')):
-                        continue
-                        
-                    # Extract domain
-                    domain = extract_domain(result_link)
-                    
-                    # Skip Google, Wikipedia, etc.
-                    skip_domains = ['google.', 'wikipedia.', 'facebook.', 'instagram.', 'twitter.', 
-                                   'linkedin.', 'youtube.', 'amazon.', 'ebay.']
-                    if any(skip in domain.lower() for skip in skip_domains) or domain.lower() in found_domains:
-                        continue
-                        
-                    found_domains.add(domain.lower())
-                    
-                    # Extract snippet
-                    snippet_elem = result.find('div', class_=re.compile('VwiC3b'))
-                    snippet = snippet_elem.text.strip() if snippet_elem else "N/A"
-                    
-                    # Check if snippet suggests this is a retailer
-                    retailer_signals = ['buy', 'shop', 'purchase', 'order', 'price', 'retailer', 'store', 
-                                        'distributor', 'dealer', 'authorized', 'official', 'stockist', 
-                                        'reseller', 'wholesale', 'supplier']
-                    
-                    is_likely_retailer = any(signal in snippet.lower() for signal in retailer_signals)
-                    retailer_confidence = "High" if is_likely_retailer else "Medium"
-                    
-                    retailers.append({
-                        'Brand': brand_name,
-                        'Retailer': title_elem.text.strip(),
-                        'Domain': domain,
-                        'Product': "N/A",
-                        'Price': "N/A",
-                        'Search_Source': search_type_name,  # Changed column name from 'Source' to 'Search_Source'
-                        'Link': result_link,
-                        'Retailer_Confidence': retailer_confidence  # Changed from 'Retailer Confidence' to 'Retailer_Confidence'
-                    })
+                time.sleep(2)  # Wait before making another request
+                alt_response = requests.get(alt_url, headers={**headers, 'User-Agent': random.choice(user_agents)}, timeout=20)
+                
+                if alt_response.status_code == 200:
+                    alt_soup = BeautifulSoup(alt_response.text, 'html.parser')
+                    alt_retailers = extract_retailers_from_search(alt_soup, brand_name, f"Alternative {search_type_name}")
+                    retailers.extend(alt_retailers)
         
         except Exception as e:
             st.error(f"Error searching page {page+1}: {str(e)}")
@@ -282,7 +333,7 @@ def process_brand_searches(brand_name, search_types, num_pages=3, country='us'):
             unique_retailers.append(retailer)
     
     # Create DataFrame
-    df = pd.DataFrame(unique_retailers)
+    df = pd.DataFrame(unique_retailers) if unique_retailers else pd.DataFrame(columns=['Brand', 'Retailer', 'Domain', 'Product', 'Price', 'Search_Source', 'Link', 'Retailer_Confidence'])
     
     # Complete
     progress_bar.progress(1.0)
@@ -308,7 +359,7 @@ def process_multiple_brands(brands, search_types, num_pages=3, country='us'):
         progress_outer.progress((i + 1) / len(brands))
     
     # Combine results
-    combined_results = pd.concat(all_results, ignore_index=True) if all_results else pd.DataFrame()
+    combined_results = pd.concat(all_results, ignore_index=True) if all_results else pd.DataFrame(columns=['Brand', 'Retailer', 'Domain', 'Product', 'Price', 'Search_Source', 'Link', 'Retailer_Confidence'])
     
     # Complete
     progress_outer.progress(1.0)
@@ -326,7 +377,7 @@ with tab1:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        brand_name = st.text_input("Enter brand name", help="Enter the exact brand name you want to find retailers for")
+        brand_name = st.text_input("Enter brand name or website", help="Enter brand name or website URL to find retailers")
     
     with col2:
         country = st.selectbox("Country", 
@@ -341,8 +392,8 @@ with tab1:
     with col1:
         search_types = st.multiselect(
             "Search methods", 
-            options=["shopping", "b2b", "wholesale", "regular"],
-            default=["shopping", "b2b"],
+            options=["shopping", "b2b", "wholesale", "where_to_buy", "partners", "regular"],
+            default=["shopping", "b2b", "where_to_buy"],
             help="Select search methods to find retailers"
         )
         
@@ -369,7 +420,7 @@ with tab1:
     # Show recent searches
     if st.session_state['search_history']:
         with st.expander("Recent Searches"):
-            for prev_brand in st.session_state['search_history']:
+            for prev_brand in st.session_state['search_history'][-5:]:  # Show only the most recent 5
                 if st.button(prev_brand, key=f"history_{prev_brand}"):
                     # Search for this brand again
                     results_df = process_brand_searches(prev_brand, search_types, num_pages, country.lower())
@@ -391,8 +442,8 @@ with tab2:
         
         bulk_search_types = st.multiselect(
             "Search methods", 
-            options=["shopping", "b2b", "wholesale", "regular"],
-            default=["shopping", "b2b"],
+            options=["shopping", "b2b", "wholesale", "where_to_buy", "partners", "regular"],
+            default=["shopping", "b2b", "where_to_buy"],
             key="bulk_search_types"
         )
         
@@ -520,12 +571,12 @@ if st.session_state['results_df'] is not None and not st.session_state['results_
                 
                 summary_df.to_excel(writer, sheet_name='Summary')
             except Exception as e:
-                st.warning(f"Could not create summary pivot table: {str(e)}")
+                pass
             
             # Create a separate worksheet for each brand
             for brand in filtered_df['Brand'].unique():
                 brand_results = filtered_df[filtered_df['Brand'] == brand]
-                # Clean brand name for worksheet name (Excel has a 31 char limit and restricts certain chars)
+                # Clean brand name for worksheet name
                 sheet_name = brand[:31].replace(':', '').replace('\\', '').replace('/', '').replace('?', '').replace('*', '').replace('[', '').replace(']', '')
                 brand_results.to_excel(writer, index=False, sheet_name=sheet_name)
         
@@ -542,39 +593,3 @@ if st.session_state['results_df'] is not None:
     if st.button("Clear Results"):
         st.session_state['results_df'] = None
         st.experimental_rerun()
-
-# Help section
-with st.expander("Help & Information"):
-    st.write("""
-    ### About This App
-    
-    This app helps you discover retailers that carry specific brands by searching Google:
-    
-    - **Google Shopping Search**: Finds retailers that sell products from the brand in Google Shopping results
-    - **B2B Search**: Specifically targets authorized retailers, distributors, and resellers
-    - **Wholesale Search**: Looks for wholesale and B2B relationships with the brand
-    - **Regular Search**: Basic Google search results that might reveal retailer relationships
-    
-    ### How It Works
-    
-    1. Enter a brand name (or multiple brands)
-    2. Select which types of searches to perform
-    3. Choose how many pages of results to analyze
-    4. The app searches Google using specialized queries to find retailers
-    5. Results are compiled, deduplicated, and presented for download
-    
-    ### Tips for Best Results
-    
-    - Use the brand's official name rather than variations
-    - Include multiple search types for more comprehensive results
-    - More pages will yield more results but may take longer
-    - The Excel export includes a summary tab and separate sheets for each brand
-    - Retailer confidence is a rough estimate of how likely the result is a legitimate retailer
-    
-    ### Limitations
-    
-    - Some results may include false positives
-    - This tool cannot access retailers behind login screens
-    - Google may block searches if too many are performed rapidly
-    - Not all B2B relationships will be discoverable via public web searches
-    """)
