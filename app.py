@@ -1,12 +1,20 @@
 import os
 import subprocess
+import time
+import streamlit as st
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import streamlit as st
-import chromedriver_autoinstaller
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from urllib.parse import quote_plus
+from webdriver_manager.chrome import ChromeDriverManager
+from urllib.parse import quote_plus, urlparse
+import random
+import datetime
+import io
+import traceback
 
 def ensure_chrome_installed():
     """Ensures Google Chrome is installed on Linux-based systems (e.g., Streamlit Cloud)."""
@@ -19,34 +27,39 @@ def ensure_chrome_installed():
 def search_google_shopping(brand_name, num_results=30):
     """
     Uses Selenium to scrape Google Shopping for retailer URLs.
+    Filters results that contain the brand name in the URL.
     """
     ensure_chrome_installed()
-    chromedriver_autoinstaller.install()
     
     options = Options()
-    options.add_argument("--headless=new")
+    options.headless = True  # Run in headless mode
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("start-maximized")
+    options.add_argument("disable-infobars")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-blink-features=AutomationControlled")
     
-    driver = webdriver.Chrome(options=options)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     query = brand_name.replace(" ", "+")
     search_url = f"https://www.google.com/search?tbm=shop&q={query}"
     driver.get(search_url)
     
-    soup = BeautifulSoup(driver.page_source, "html.parser")
+    time.sleep(3)  # Wait for page to load
+    
     retailers = []
     brand_name_lower = brand_name.lower().replace(" ", "")
+
+    results = driver.find_elements(By.TAG_NAME, "a")
     
-    for result in soup.find_all("a", href=True):
-        url = result["href"]
-        if "url?q=" in url and "google.com" not in url:
-            clean_url = url.split("url?q=")[-1].split("&")[0]
-            if brand_name_lower in clean_url.lower():
-                retailers.append(clean_url)
-            if len(retailers) >= num_results:
-                break
+    for result in results:
+        url = result.get_attribute("href")
+        if url and "google.com" not in url and brand_name_lower in url.lower():
+            retailers.append(url)
+        if len(retailers) >= num_results:
+            break
     
-    driver.quit()
+    driver.quit()  # Close browser session
     return retailers
 
 def find_retailers_comprehensive(brand_name, brand_website=None, industry=None, product_skus=None, include_where_to_buy=True):
