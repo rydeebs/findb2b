@@ -3,6 +3,8 @@ import streamlit as st
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
+
 
 # Load API keys from a separate .env file
 load_dotenv()
