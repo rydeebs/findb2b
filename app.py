@@ -37,6 +37,9 @@ def search_google_shopping(brand_name, brand_url, industry, filters, num_results
     
     retailers = []
     for item in data.get("items", []):
+        # Skip results that match the brand's own website
+        if brand_url and brand_url in item.get("link", ""):
+            continue
         retailers.append({
             "Title": item.get("title"),
             "Link": item.get("link"),
