@@ -95,11 +95,10 @@ def extract_brand_from_url(url):
     
     return brand
 
-# Function to directly extract Google Shopping results with maximum compatibility
-def extract_google_shopping_direct(brand_name):
+def enhanced_google_shopping_extraction(brand_name):
     """
-    Performs a specialized Google Shopping search with multiple techniques to ensure
-    retailer results are found, even with challenging queries like 'SFH Strong'.
+    Enhanced Google Shopping extraction designed to capture retailers
+    for all types of brands regardless of product category.
     
     Args:
         brand_name: The brand to search for
@@ -110,14 +109,14 @@ def extract_google_shopping_direct(brand_name):
     retailers = []
     found_domains = set()
     
-    # Prepare different search variations
+    # Prepare generalized search variations
     search_variations = [
-        f"{brand_name}",                         # Exact brand name
-        f"{brand_name} buy",                     # Brand + buy
-        f"{brand_name} supplement" if len(brand_name.split()) < 3 else brand_name,  # Add category if short name
-        f"\"{brand_name}\"",                     # Exact match with quotes
-        f"{brand_name} protein" if "sfh" in brand_name.lower() else brand_name,     # Special case for SFH
-        f"{brand_name} official"                 # Try to find official retailers
+        f"{brand_name}",                    # Exact brand name
+        f"{brand_name} buy",                # Brand + buy
+        f"{brand_name} product",            # Brand + product
+        f"\"{brand_name}\"",                # Exact match with quotes
+        f"{brand_name} retailer",           # Brand + retailer
+        f"{brand_name} where to buy"        # Brand + where to buy
     ]
     
     # Different user agents to rotate
@@ -129,26 +128,33 @@ def extract_google_shopping_direct(brand_name):
         'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
     ]
     
-    st.info(f"Performing specialized Google Shopping search for: {brand_name}")
+    st.info(f"Performing enhanced Google Shopping search for: {brand_name}")
     progress_text = st.empty()
     
-    # Try each search variation
+    # Try multiple search approaches to maximize coverage
+    search_engines = [
+        # Google Shopping standard view
+        lambda query: f"https://www.google.com/search?q={query}&tbm=shop&num=30",
+        # Google Shopping mobile view (sometimes shows different results)
+        lambda query: f"https://www.google.com/search?q={query}&tbm=shop&num=30&source=lnms",
+        # Google search with site:amazon restriction (Amazon is a major retailer)
+        lambda query: f"https://www.google.com/search?q={query}+site:amazon.com&num=20",
+        # Google search for other major retailers
+        lambda query: f"https://www.google.com/search?q={query}+site:walmart.com+OR+site:target.com+OR+site:bestbuy.com&num=20"
+    ]
+    
+    # Try each search variation with each search engine
     for search_idx, search_term in enumerate(search_variations):
         progress_text.text(f"Trying search variation {search_idx+1}/{len(search_variations)}: '{search_term}'")
         
         # Encode the search term
         query = quote_plus(search_term)
         
-        # Try both regular shopping search and mobile shopping search
-        shopping_urls = [
-            f"https://www.google.com/search?q={query}&tbm=shop&num=20",
-            f"https://www.google.com/search?q={query}&tbm=shop&num=20&source=lnms"
-        ]
-        
-        for url_idx, search_url in enumerate(shopping_urls):
+        for engine_idx, search_engine in enumerate(search_engines):
+            search_url = search_engine(query)
             try:
                 # Use a different user agent for each request
-                user_agent = user_agents[(search_idx + url_idx) % len(user_agents)]
+                user_agent = user_agents[(search_idx + engine_idx) % len(user_agents)]
                 
                 # Set up request headers
                 headers = {
@@ -160,17 +166,11 @@ def extract_google_shopping_direct(brand_name):
                     'Upgrade-Insecure-Requests': '1',
                 }
                 
-                # Additional parameters to mimic a real browser
-                cookies = {
-                    'CONSENT': 'YES+',
-                }
-                
                 # Send request with longer timeout
                 response = requests.get(
                     search_url, 
                     headers=headers, 
-                    cookies=cookies,
-                    timeout=25
+                    timeout=20
                 )
                 
                 if response.status_code != 200:
@@ -182,9 +182,6 @@ def extract_google_shopping_direct(brand_name):
                 
                 # Parse HTML
                 soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # with open(f"debug_shopping_{search_idx}_{url_idx}.html", "w", encoding="utf-8") as f:
-                #     f.write(response.text)
                 
                 # Extract all links from the page
                 all_links = soup.find_all('a', href=True)
@@ -233,17 +230,35 @@ def extract_google_shopping_direct(brand_name):
                     domain = extract_domain(actual_url)
                     
                     # Skip if already found or if it's common non-retailer domains
-                    skip_domains = ['google.', 'youtube.', 'facebook.', 'instagram.', 'twitter.']
+                    skip_domains = ['google.', 'youtube.', 'facebook.', 'instagram.', 'twitter.', 
+                                   'linkedin.', 'pinterest.', 'reddit.', 'tiktok.']
                     if domain in found_domains or any(skip in domain.lower() for skip in skip_domains):
                         continue
                     
-                    # Check if the domain contains the brand name (likely the brand's own site)
-                    brand_words = brand_name.lower().split()
+                    # More robust approach to identifying brand's own domain
                     is_brand_domain = False
-                    for word in brand_words:
-                        if len(word) > 2 and word in domain.lower():
-                            is_brand_domain = True
-                            break
+                    
+                    # Split the brand name into words
+                    brand_words = brand_name.lower().split()
+                    
+                    # 1. Check if the domain exactly matches the brand (without spaces)
+                    if domain.split('.')[0].lower() == brand_name.lower().replace(" ", ""):
+                        is_brand_domain = True
+                        
+                    # 2. Check for word matches but be smarter about it
+                    # Only consider as brand domain if all these are true:
+                    # - Contains a word from brand name that's ≥ 4 characters
+                    # - The matching word isn't a common word
+                    # - The matching portion is a significant part of the domain
+                    elif len(brand_words) > 0:
+                        common_words = {'the', 'and', 'buy', 'shop', 'get', 'our', 'your', 'this', 'that', 'with', 'from'}
+                        for word in brand_words:
+                            if (len(word) >= 4 and 
+                                word.lower() not in common_words and 
+                                word.lower() in domain.lower() and
+                                len(word) >= len(domain.split('.')[0]) / 3):
+                                is_brand_domain = True
+                                break
                     
                     # Skip brand's own domain
                     if is_brand_domain:
@@ -282,18 +297,56 @@ def extract_google_shopping_direct(brand_name):
                     # Determine retailer name
                     retailer_name = domain.split('.')[0].capitalize()
                     
-                    # Check for common retailer domains and use proper names
+                    # Comprehensive retailer name mapping
                     common_retailers = {
+                        # General retail
                         'amazon.com': 'Amazon',
                         'walmart.com': 'Walmart',
                         'target.com': 'Target',
                         'ebay.com': 'eBay',
-                        'roguefitness.com': 'Rogue Fitness',
+                        'bestbuy.com': 'Best Buy',
+                        'costco.com': 'Costco',
+                        'samsclub.com': 'Sam\'s Club',
+                        'homedepot.com': 'Home Depot',
+                        'lowes.com': 'Lowe\'s',
+                        'wayfair.com': 'Wayfair',
+                        'etsy.com': 'Etsy',
+                        'newegg.com': 'Newegg',
+                        'macys.com': 'Macy\'s',
+                        'nordstrom.com': 'Nordstrom',
+                        'kohls.com': 'Kohl\'s',
+                        'bedbathandbeyond.com': 'Bed Bath & Beyond',
+                        'overstock.com': 'Overstock',
+                        
+                        # Beauty/Health
+                        'ulta.com': 'Ulta Beauty',
+                        'sephora.com': 'Sephora',
+                        'cvs.com': 'CVS',
+                        'walgreens.com': 'Walgreens',
                         'gnc.com': 'GNC',
                         'vitaminshoppe.com': 'Vitamin Shoppe',
+                        
+                        # Sports/Fitness
+                        'dickssportinggoods.com': 'Dick\'s Sporting Goods',
+                        'roguefitness.com': 'Rogue Fitness',
                         'bodybuilding.com': 'Bodybuilding.com',
                         'thefeed.com': 'The Feed',
-                        'supplementwarehouse.com': 'Supplement Warehouse'
+                        'rei.com': 'REI',
+                        'academy.com': 'Academy Sports',
+                        
+                        # Electronics
+                        'bhphotovideo.com': 'B&H Photo',
+                        'adorama.com': 'Adorama',
+                        'microcenter.com': 'Micro Center',
+                        'frys.com': 'Fry\'s Electronics',
+                        
+                        # Others
+                        'chewy.com': 'Chewy',
+                        'petco.com': 'Petco',
+                        'petsmart.com': 'PetSmart',
+                        'houzz.com': 'Houzz',
+                        'officedepot.com': 'Office Depot',
+                        'staples.com': 'Staples'
                     }
                     
                     if domain in common_retailers:
@@ -306,25 +359,85 @@ def extract_google_shopping_direct(brand_name):
                         'Domain': domain,
                         'Product': title,
                         'Price': price,
-                        'Search_Source': f"Google Shopping Direct - Variation {search_idx+1}",
+                        'Search_Source': f"Enhanced Google Search - Variation {search_idx+1}",
                         'Link': actual_url,
                         'Retailer_Confidence': "Very High"
                     })
                 
-                # If we found some retailers, we can stop trying variations
-                if len(retailers) >= 3 and search_idx > 0:
+                # If we found enough retailers, we can stop trying variations
+                if len(retailers) >= 5 and search_idx > 0:
                     progress_text.text(f"Found {len(retailers)} retailers for {brand_name}. Moving to next steps...")
                     return retailers
                 
                 # Add slight delay between requests
-                time.sleep(2)
+                time.sleep(1.5)
                 
             except Exception as e:
                 # Log error and continue with next URL
-                print(f"Error searching {search_url}: {str(e)}")
+                print(f"Error searching: {str(e)}")
                 continue
     
-    progress_text.text(f"Completed specialized Google Shopping search. Found {len(retailers)} retailers.")
+    # If specific searches didn't yield enough results, try industry-specific 
+    # retailer checks based on brand name pattern recognition
+    if len(retailers) < 3:
+        # Check for electronics pattern
+        if any(word in brand_name.lower() for word in ['tech', 'electronics', 'audio', 'video', 'phone', 'computer', 'laptop', 'tablet']):
+            tech_retailers = [
+                {"name": "Best Buy", "domain": "bestbuy.com", "search_pattern": "{brand}+site:bestbuy.com"},
+                {"name": "Newegg", "domain": "newegg.com", "search_pattern": "{brand}+site:newegg.com"},
+                {"name": "B&H Photo", "domain": "bhphotovideo.com", "search_pattern": "{brand}+site:bhphotovideo.com"},
+                {"name": "Micro Center", "domain": "microcenter.com", "search_pattern": "{brand}+site:microcenter.com"}
+            ]
+            for retailer in tech_retailers:
+                if retailer["domain"] in found_domains:
+                    continue
+                try:
+                    direct_result = check_specific_retailer(brand_name, retailer)
+                    if direct_result:
+                        retailers.append(direct_result)
+                        found_domains.add(retailer["domain"])
+                except:
+                    continue
+        
+        # Check for beauty pattern
+        elif any(word in brand_name.lower() for word in ['beauty', 'cosmetic', 'makeup', 'skin', 'hair', 'fragrance']):
+            beauty_retailers = [
+                {"name": "Sephora", "domain": "sephora.com", "search_pattern": "{brand}+site:sephora.com"},
+                {"name": "Ulta Beauty", "domain": "ulta.com", "search_pattern": "{brand}+site:ulta.com"},
+                {"name": "Dermstore", "domain": "dermstore.com", "search_pattern": "{brand}+site:dermstore.com"}
+            ]
+            for retailer in beauty_retailers:
+                if retailer["domain"] in found_domains:
+                    continue
+                try:
+                    direct_result = check_specific_retailer(brand_name, retailer)
+                    if direct_result:
+                        retailers.append(direct_result)
+                        found_domains.add(retailer["domain"])
+                except:
+                    continue
+        
+        # Check for fitness/supplement pattern
+        elif any(word in brand_name.lower() for word in ['fitness', 'protein', 'supplement', 'nutrition', 'vitamin', 'workout']):
+            fitness_retailers = [
+                {"name": "GNC", "domain": "gnc.com", "search_pattern": "{brand}+site:gnc.com"},
+                {"name": "Vitamin Shoppe", "domain": "vitaminshoppe.com", "search_pattern": "{brand}+site:vitaminshoppe.com"},
+                {"name": "Bodybuilding.com", "domain": "bodybuilding.com", "search_pattern": "{brand}+site:bodybuilding.com"},
+                {"name": "The Feed", "domain": "thefeed.com", "search_pattern": "{brand}+site:thefeed.com"},
+                {"name": "Rogue Fitness", "domain": "roguefitness.com", "search_pattern": "{brand}+site:roguefitness.com"}
+            ]
+            for retailer in fitness_retailers:
+                if retailer["domain"] in found_domains:
+                    continue
+                try:
+                    direct_result = check_specific_retailer(brand_name, retailer)
+                    if direct_result:
+                        retailers.append(direct_result)
+                        found_domains.add(retailer["domain"])
+                except:
+                    continue
+    
+    progress_text.text(f"Completed enhanced Google Shopping search. Found {len(retailers)} retailers.")
     return retailers
 
 # Function to check if a specific retailer carries a brand via direct site search
