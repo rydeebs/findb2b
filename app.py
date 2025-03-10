@@ -1,4 +1,10 @@
+import time
 import streamlit as st
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -1033,70 +1039,64 @@ def crawl_brand_website(brand_name, brand_website, max_depth=2, max_pages=20):
 
 def search_google_shopping(brand_name, num_results=30):
     """
-    Enhanced Google Search Scraper.
-    - Uses Google Search instead of Google Shopping for better retailer coverage.
-    - Extracts clean URLs from search results.
-    - Matches any retailer URL that includes part of the brand name.
+    Uses Selenium to scrape Google Shopping for retailer URLs.
+    Filters results that contain the brand name in the URL.
     """
     query = brand_name.replace(" ", "+")
-    search_url = f"https://www.google.com/search?q={query}+buy+online"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-
-    response = requests.get(search_url, headers=headers)
-    if response.status_code != 200:
-        print("Error fetching Google results")
-        return []
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    retailers = []
+    search_url = f"https://www.google.com/search?tbm=shop&q={query}"
     
-    # Normalize brand name for better matching
+    options = Options()
+    options.headless = True  # Run in headless mode
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("start-maximized")
+    options.add_argument("disable-infobars")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    driver.get(search_url)
+    
+    time.sleep(3)  # Wait for page to load
+    
+    retailers = []
     brand_name_lower = brand_name.lower().replace(" ", "")
 
-    for result in soup.find_all("a", href=True):
-        url = result["href"]
-        
-        # Extract clean retailer URL
-        if "/url?q=" in url:
-            clean_url = url.split("/url?q=")[-1].split("&")[0]
-            parsed_url = urlparse(clean_url)
-            domain = parsed_url.netloc.lower()
-            
-            # Only include links to retailer websites (not Google/Wikipedia/social sites)
-            if domain and not domain.startswith("www.google") and brand_name_lower in clean_url.lower():
-                retailers.append(clean_url)
-
-            if len(retailers) >= num_results:
-                break
-
+    results = driver.find_elements(By.TAG_NAME, "a")
+    
+    for result in results:
+        url = result.get_attribute("href")
+        if url and "google.com" not in url and brand_name_lower in url.lower():
+            retailers.append(url)
+        if len(retailers) >= num_results:
+            break
+    
+    driver.quit()  # Close browser session
     return retailers
 
 def find_retailers_comprehensive(brand_name, brand_website=None, industry=None, product_skus=None, include_where_to_buy=True):
     all_retailers = []
-
+    
     progress_bar = st.progress(0)
     status_text = st.empty()
     progress_steps = 7
     current_step = 0
-
-    status_text.text(f"Searching Google for {brand_name} retailers...")
+    
+    status_text.text(f"Searching Google Shopping for {brand_name} products...")
     google_shopping_retailers = search_google_shopping(brand_name, num_results=30)
-
+    
     for retailer in google_shopping_retailers:
         all_retailers.append({
             'Brand': brand_name,
             'Retailer': retailer.split('.')[0].capitalize(),
             'Domain': retailer,
-            'Search_Source': "Google",
+            'Search_Source': "Google Shopping",
             'Link': retailer
         })
-
+    
     progress_bar.progress(1.0)
     status_text.text(f"Found {len(all_retailers)} retailers carrying {brand_name}")
-
+    
     return all_retailers
 
 # Function to process a brand with comprehensive approach
@@ -1510,6 +1510,4 @@ if st.session_state['results_df'] is not None:
         st.session_state['product_skus'] = None
         st.session_state['bulk_product_skus'] = None
         st.experimental_rerun()
-
-print(response.text[:1000])  # Check first 1000 characters of HTML
 
