@@ -40,6 +40,13 @@ def search_google_shopping(brand_name, brand_url, industry, filters, num_results
         # Skip results that match the brand's own website
         if brand_url and brand_url in item.get("link", ""):
             continue
+        # Skip social media sites
+        social_sites = ['facebook.com', 'instagram.com', 'pinterest.com', 'twitter.com', 'linkedin.com', 'tiktok.com']
+        if any(site in item.get("link", "") for site in social_sites):
+            continue
+        # Skip results that match the brand's own website
+        if brand_url and brand_url in item.get("link", ""):
+            continue
         retailers.append({
             "Title": item.get("title"),
             "Link": item.get("link"),
