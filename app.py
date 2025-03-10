@@ -44,7 +44,7 @@ def search_google_shopping_api(brand_name, brand_url=None, industry=None, filter
     query = f"{brand_name}"
     
     # Add shopping-specific parameters
-    query += " buy OR purchase OR shop OR store OR retailer OR "where to buy""
+    query += " buy OR purchase OR shop OR store OR retailer OR \"where to buy\""
     
     # Add industry if provided
     if industry:
