@@ -2,17 +2,13 @@ import os
 import streamlit as st
 import pandas as pd
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
-
-print("GOOGLE_API_KEY:", repr(os.getenv("GOOGLE_API_KEY")))  # Debugging
-print("GOOGLE_CSE_ID:", repr(os.getenv("GOOGLE_CSE_ID")))  # Debugging
-
-# Load API keys from a separate .env file
-load_dotenv()
+# Load API key from environment variables (GitHub Secrets)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
+
+if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
+    st.error("API keys not found! Ensure they are set as environment variables.")
 
 def search_google_shopping(brand_name, brand_url, industry, filters, num_results=10):
     """
