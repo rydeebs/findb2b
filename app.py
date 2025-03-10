@@ -95,7 +95,8 @@ def extract_brand_from_url(url):
     
     return brand
 
-def enhanced_google_shopping_extraction(brand_name):
+# Function to directly extract Google Shopping results with maximum compatibility
+def extract_google_shopping_direct(brand_name):
     """
     Enhanced Google Shopping extraction designed to capture retailers
     for all types of brands regardless of product category.
