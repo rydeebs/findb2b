@@ -1031,8 +1031,21 @@ def crawl_brand_website(brand_name, brand_website, max_depth=2, max_pages=20):
     
     return retailers
 
-# Add this function to your app.py file to replace the find_retailers_comprehensive function
+def search_google_shopping(brand_name, num_results=30):
+    """
+    Mock function to replace missing 'search_google_shopping'.
+    Returns an empty list to prevent application crash.
+    """
+    print(f"Mock search for {brand_name} on Google Shopping with {num_results} results.")
+    return []
 
+# Ensure 'search_google_shopping' exists before calling it.
+try:
+    google_shopping_retailers = search_google_shopping(brand_name, num_results=30)
+except NameError:
+    google_shopping_retailers = []  # Default to an empty list if the function is undefined
+
+# Add this function to your app.py file to replace the find_retailers_comprehensive function
 def find_retailers_comprehensive(brand_name, brand_website=None, industry=None, product_skus=None, include_where_to_buy=True):
     all_retailers = []
     
@@ -1137,7 +1150,7 @@ def find_retailers_comprehensive(brand_name, brand_website=None, industry=None, 
             try:
                 user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
                 headers = {'User-Agent': user_agent}
-                response = requests.get(product_search_url, headers=headers, timeout=15)
+                response = requests.get(product_search_url, headers=headers, timeout=20)
                 
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'html.parser')
