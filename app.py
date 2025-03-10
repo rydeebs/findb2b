@@ -1034,6 +1034,7 @@ def crawl_brand_website(brand_name, brand_website, max_depth=2, max_pages=20):
 def search_google_shopping(brand_name, num_results=30):
     """
     Improved Google Shopping search function.
+    Scrapes retailer URLs and filters results to only include those that contain the brand name in the URL.
     """
     query = brand_name.replace(" ", "+")
     search_url = f"https://www.google.com/search?tbm=shop&q={query}"
@@ -1049,11 +1050,18 @@ def search_google_shopping(brand_name, num_results=30):
     soup = BeautifulSoup(response.text, "html.parser")
     retailers = []
     
+    # Convert brand name to lowercase for case-insensitive matching
+    brand_name_lower = brand_name.lower().replace(" ", "")
+    
     for result in soup.find_all("a", href=True):
         url = result["href"]
         if "url?q=" in url and "google.com" not in url:
             clean_url = url.split("url?q=")[-1].split("&")[0]
-            retailers.append(clean_url)
+            
+            # Ensure the retailer's URL contains the brand name
+            if brand_name_lower in clean_url.lower():
+                retailers.append(clean_url)
+                
             if len(retailers) >= num_results:
                 break
     
@@ -1083,6 +1091,7 @@ def find_retailers_comprehensive(brand_name, brand_website=None, industry=None, 
     status_text.text(f"Found {len(all_retailers)} retailers carrying {brand_name}")
     
     return all_retailers
+
 
 # Function to process a brand with comprehensive approach
 def process_brand_retailers_comprehensive(brand_name, brand_website=None, industry=None, product_skus=None, include_where_to_buy=True):
