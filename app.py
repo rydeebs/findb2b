@@ -11,6 +11,41 @@ GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 
 def search_google_shopping(brand_name, brand_url, industry, filters, num_results=10):
     """
+    Uses Google Shopping directly to find retailers carrying the brand's products.
+    """
+    search_url = f"https://www.google.com/shopping?udm=28&q={brand_name}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+    response = requests.get(search_url, headers=headers)
+    
+    if response.status_code != 200:
+        st.error(f"Google Shopping search failed: {response.status_code}")
+        return []
+    
+    soup = BeautifulSoup(response.text, "html.parser")
+    retailers = []
+    seen_domains = set()
+    
+    for link in soup.find_all("a", href=True):
+        url = link["href"]
+        if not url.startswith("http"):
+            continue
+        domain = url.split("/")[2]
+        
+        if brand_url and brand_url in url:
+            continue
+        
+        if domain in seen_domains:
+            continue
+        seen_domains.add(domain)
+        
+        retailers.append({
+            "Title": link.text.strip() or "Retailer",
+            "Link": url,
+            "Snippet": "Found via Google Shopping"
+        })
+    
+    return retailers
+    """
     Uses Google Custom Search API to get Google Shopping results for a product.
     Allows additional filtering based on user inputs such as brand URL and industry.
     """
