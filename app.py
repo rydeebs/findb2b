@@ -4,6 +4,13 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
+
+# Debugging: Print values (REMOVE this before deploying)
+print("GOOGLE_API_KEY:", repr(os.getenv("GOOGLE_API_KEY")))
+print("GOOGLE_CSE_ID:", repr(os.getenv("GOOGLE_CSE_ID")))
+
 # Load API keys from a separate .env file
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
