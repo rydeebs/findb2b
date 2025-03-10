@@ -35,16 +35,24 @@ def search_google_shopping(brand_name, num_results=30):
     options.headless = True  # Run in headless mode
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
     options.add_argument("start-maximized")
     options.add_argument("disable-infobars")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    
+
+    # Explicitly set the Chrome binary location
+    chrome_binary_path = "/usr/bin/google-chrome"
+    if os.path.exists(chrome_binary_path):
+        options.binary_location = chrome_binary_path
+    else:
+        print("Google Chrome not found at expected location!")
+
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     query = brand_name.replace(" ", "+")
     search_url = f"https://www.google.com/search?tbm=shop&q={query}"
     driver.get(search_url)
-    
+
     time.sleep(3)  # Wait for page to load
     
     retailers = []
@@ -61,6 +69,7 @@ def search_google_shopping(brand_name, num_results=30):
     
     driver.quit()  # Close browser session
     return retailers
+
 
 def find_retailers_comprehensive(brand_name, brand_website=None, industry=None, product_skus=None, include_where_to_buy=True):
     all_retailers = []
