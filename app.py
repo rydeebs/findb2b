@@ -177,8 +177,9 @@ def find_retailers_for_brand(brand_name, search_type='shopping', num_pages=3, co
                             'Domain': domain,
                             'Product': title,
                             'Price': price,
-                            'Source': search_type_name,
-                            'Link': merchant_link if merchant_link else ""
+                            'Search_Source': search_type_name,  # Changed column name from 'Source' to 'Search_Source'
+                            'Link': merchant_link if merchant_link else "",
+                            'Retailer_Confidence': "High"  # Added consistent confidence field
                         })
             else:
                 # Extract regular search results
@@ -227,9 +228,9 @@ def find_retailers_for_brand(brand_name, search_type='shopping', num_pages=3, co
                         'Domain': domain,
                         'Product': "N/A",
                         'Price': "N/A",
-                        'Source': search_type_name,
+                        'Search_Source': search_type_name,  # Changed column name from 'Source' to 'Search_Source'
                         'Link': result_link,
-                        'Retailer Confidence': retailer_confidence
+                        'Retailer_Confidence': retailer_confidence  # Changed from 'Retailer Confidence' to 'Retailer_Confidence'
                     })
         
         except Exception as e:
@@ -437,93 +438,104 @@ with tab2:
 if st.session_state['results_df'] is not None and not st.session_state['results_df'].empty:
     st.header("Search Results")
     
-    # Filter options
-    with st.expander("Filter Results"):
-        col1, col2 = st.columns(2)
+    # Add defensive check for columns
+    required_columns = ['Brand', 'Search_Source', 'Domain', 'Retailer']
+    missing_columns = [col for col in required_columns if col not in st.session_state['results_df'].columns]
+    
+    if missing_columns:
+        st.warning(f"Missing expected columns in results: {', '.join(missing_columns)}")
+        st.write("Available columns:", ", ".join(st.session_state['results_df'].columns))
+    else:
+        # Filter options
+        with st.expander("Filter Results"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Get list of brands in results
+                brands_in_results = st.session_state['results_df']['Brand'].unique().tolist()
+                selected_brands = st.multiselect("Filter by brand", options=brands_in_results, default=brands_in_results)
+            
+            with col2:
+                # Get list of search sources in results
+                sources_in_results = st.session_state['results_df']['Search_Source'].unique().tolist()
+                selected_sources = st.multiselect("Filter by source", options=sources_in_results, default=sources_in_results)
+        
+            # Apply filters
+            filtered_df = st.session_state['results_df']
+            
+            if selected_brands:
+                filtered_df = filtered_df[filtered_df['Brand'].isin(selected_brands)]
+                
+            if selected_sources:
+                filtered_df = filtered_df[filtered_df['Search_Source'].isin(selected_sources)]
+        
+        # Display results
+        st.dataframe(filtered_df)
+        
+        # Summary statistics
+        st.subheader("Summary")
+        
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            # Get list of brands in results
-            brands_in_results = st.session_state['results_df']['Brand'].unique().tolist()
-            selected_brands = st.multiselect("Filter by brand", options=brands_in_results, default=brands_in_results)
+            st.metric("Total Retailers Found", len(filtered_df))
         
         with col2:
-            # Get list of search sources in results
-            sources_in_results = st.session_state['results_df']['Source'].unique().tolist()
-            selected_sources = st.multiselect("Filter by source", options=sources_in_results, default=sources_in_results)
-    
-        # Apply filters
-        filtered_df = st.session_state['results_df']
+            st.metric("Unique Domains", filtered_df['Domain'].nunique())
         
-        if selected_brands:
-            filtered_df = filtered_df[filtered_df['Brand'].isin(selected_brands)]
-            
-        if selected_sources:
-            filtered_df = filtered_df[filtered_df['Source'].isin(selected_sources)]
-    
-    # Display results
-    st.dataframe(filtered_df)
-    
-    # Summary statistics
-    st.subheader("Summary")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Total Retailers Found", len(filtered_df))
-    
-    with col2:
-        st.metric("Unique Domains", filtered_df['Domain'].nunique())
-    
-    with col3:
-        st.metric("Brands Searched", filtered_df['Brand'].nunique())
-    
-    # Download options
-    st.subheader("Download Results")
-    col1, col2 = st.columns(2)
-    
-    # Get timestamp for filenames
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Download as CSV
-    csv = filtered_df.to_csv(index=False)
-    col1.download_button(
-        label="Download as CSV",
-        data=csv,
-        file_name=f"brand_retailers_{timestamp}.csv",
-        mime="text/csv"
-    )
-    
-    # Download as Excel
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        filtered_df.to_excel(writer, index=False, sheet_name='All Results')
+        with col3:
+            st.metric("Brands Searched", filtered_df['Brand'].nunique())
         
-        # Create a pivot table summary
-        summary_df = pd.pivot_table(
-            filtered_df,
-            index='Brand',
-            columns='Source',
-            values='Domain',
-            aggfunc='count',
-            fill_value=0
+        # Download options
+        st.subheader("Download Results")
+        col1, col2 = st.columns(2)
+        
+        # Get timestamp for filenames
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Download as CSV
+        csv = filtered_df.to_csv(index=False)
+        col1.download_button(
+            label="Download as CSV",
+            data=csv,
+            file_name=f"brand_retailers_{timestamp}.csv",
+            mime="text/csv"
         )
         
-        summary_df.to_excel(writer, sheet_name='Summary')
+        # Download as Excel
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            filtered_df.to_excel(writer, index=False, sheet_name='All Results')
+            
+            # Create a pivot table summary
+            try:
+                summary_df = pd.pivot_table(
+                    filtered_df,
+                    index='Brand',
+                    columns='Search_Source',
+                    values='Domain',
+                    aggfunc='count',
+                    fill_value=0
+                )
+                
+                summary_df.to_excel(writer, sheet_name='Summary')
+            except Exception as e:
+                st.warning(f"Could not create summary pivot table: {str(e)}")
+            
+            # Create a separate worksheet for each brand
+            for brand in filtered_df['Brand'].unique():
+                brand_results = filtered_df[filtered_df['Brand'] == brand]
+                # Clean brand name for worksheet name (Excel has a 31 char limit and restricts certain chars)
+                sheet_name = brand[:31].replace(':', '').replace('\\', '').replace('/', '').replace('?', '').replace('*', '').replace('[', '').replace(']', '')
+                brand_results.to_excel(writer, index=False, sheet_name=sheet_name)
         
-        # Create a separate worksheet for each brand
-        for brand in filtered_df['Brand'].unique():
-            brand_results = filtered_df[filtered_df['Brand'] == brand]
-            # Clean brand name for worksheet name (Excel has a 31 char limit and restricts certain chars)
-            sheet_name = brand[:31].replace(':', '').replace('\\', '').replace('/', '').replace('?', '').replace('*', '').replace('[', '').replace(']', '')
-            brand_results.to_excel(writer, index=False, sheet_name=sheet_name)
-    
-    buffer.seek(0)
-    col2.download_button(
-        label="Download as Excel",
-        data=buffer,
-        file_name=f"brand_retailers_{timestamp}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        buffer.seek(0)
+        col2.download_button(
+            label="Download as Excel",
+            data=buffer,
+            file_name=f"brand_retailers_{timestamp}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # Reset results button
 if st.session_state['results_df'] is not None:
