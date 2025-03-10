@@ -1047,6 +1047,7 @@ def search_google_shopping(brand_name, num_results=30):
     
     options = Options()
     options.headless = True  # Run in headless mode
+    options.add_argument("--headless=new")  # Use new headless mode
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("start-maximized")
@@ -1054,7 +1055,9 @@ def search_google_shopping(brand_name, num_results=30):
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-blink-features=AutomationControlled")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    import chromedriver_autoinstaller
+    chromedriver_autoinstaller.install()  # Auto-install latest ChromeDriver
+    driver = webdriver.Chrome(options=options)
     driver.get(search_url)
     
     time.sleep(3)  # Wait for page to load
