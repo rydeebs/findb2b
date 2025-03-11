@@ -35,6 +35,7 @@ def extract_domain(url):
 def search_google_shopping(brand_name, brand_url=None, industry=None, filters=None):
     """
     Enhanced function to scrape Google Shopping results with rate limit handling.
+    Focuses exclusively on Google Shopping to extract retailers.
     """
     # Clean up brand URL if provided
     brand_domain = extract_domain(brand_url) if brand_url else None
@@ -53,7 +54,7 @@ def search_google_shopping(brand_name, brand_url=None, industry=None, filters=No
     # Encode the query
     encoded_query = quote_plus(query)
     
-    # Direct Google Shopping URL
+    # Direct Google Shopping URL - explicitly target shopping results only
     search_url = f"https://www.google.com/search?q={encoded_query}&tbm=shop&num=30"
     
     # Use a realistic user agent
@@ -163,6 +164,21 @@ def search_google_shopping(brand_name, brand_url=None, industry=None, filters=No
                         if domain in seen_domains:
                             continue
                         
+                        # Get product title
+                        product_title = "Product page"
+                        title_elem = element.find(['h3', 'h4'])
+                        if title_elem:
+                            product_title = title_elem.text.strip()
+                        
+                        # Validate that the product contains part of the brand name
+                        # This ensures we're only showing retailers that actually carry the brand's products
+                        if brand_name.lower() not in product_title.lower():
+                            # If title doesn't contain brand name, check parent elements for brand mention
+                            parent_text = element.get_text().lower()
+                            if brand_name.lower() not in parent_text:
+                                # Skip this result if no brand mention found
+                                continue
+                        
                         seen_domains.add(domain)
                         
                         # Try to find merchant name
@@ -187,12 +203,6 @@ def search_google_shopping(brand_name, brand_url=None, industry=None, filters=No
                             match = price_pattern.search(price_match)
                             if match:
                                 price = match.group(0)
-                        
-                        # Get product title
-                        product_title = "Product page"
-                        title_elem = element.find(['h3', 'h4'])
-                        if title_elem:
-                            product_title = title_elem.text.strip()
                         
                         retailers.append({
                             "Retailer": merchant_name,
@@ -242,8 +252,6 @@ def search_google_shopping(brand_name, brand_url=None, industry=None, filters=No
                     if any(skip in domain.lower() for skip in skip_domains):
                         continue
                     
-                    seen_domains.add(domain)
-                    
                     # Find the nearest text that might be the title
                     parent = link.parent
                     product_title = "Product page"
@@ -262,6 +270,17 @@ def search_google_shopping(brand_name, brand_url=None, industry=None, filters=No
                     # Use link text if no title found
                     if product_title == "Product page" and link.text.strip():
                         product_title = link.text.strip()
+                    
+                    # Validate that the product contains part of the brand name
+                    if brand_name.lower() not in product_title.lower():
+                        # If parent elements exist, check them for brand mention
+                        parent = link.parent
+                        if parent:
+                            parent_text = parent.get_text().lower()
+                            if brand_name.lower() not in parent_text:
+                                continue
+                    
+                    seen_domains.add(domain)
                     
                     retailers.append({
                         "Retailer": domain.split('.')[0].capitalize(),
@@ -315,51 +334,6 @@ def find_retailers_comprehensive(brand_name, brand_url, industry, filters):
                 all_retailers.append(retailer)
                 seen_domains.add(domain)
     
-    # Try with a "where to buy" keyword if still not enough results
-    # But add an even longer delay
-    if len(all_retailers) < 5:
-        progress_message.info(f"Searching for 'where to buy' information...")
-        time.sleep(random.uniform(5.0, 7.0))  # Even longer delay
-        
-        where_to_buy_search = f"{brand_name} where to buy"
-        retailers = search_google_shopping(where_to_buy_search, brand_url, industry, filters)
-        
-        for retailer in retailers:
-            domain = retailer["Domain"]
-            if domain not in seen_domains:
-                all_retailers.append(retailer)
-                seen_domains.add(domain)
-    
-    # Add a direct check for major retailers
-    # Only do this if industry matches or if we still don't have many results
-    if "cosmetics" in (industry or "").lower() or "makeup" in (industry or "").lower() or "beauty" in (industry or "").lower() or len(all_retailers) < 3:
-        potential_retailers = ["target.com", "qvc.com", "amazon.com", "ulta.com", "sephora.com", 
-                              "walmart.com", "bestbuy.com", "homedepot.com", "lowes.com"]
-        
-        checked_count = 0
-        for retailer in potential_retailers:
-            # Only check up to 3 retailers to avoid rate limits
-            if checked_count >= 3:
-                break
-                
-            if retailer not in seen_domains:
-                checked_count += 1
-                
-                try:
-                    # Use a simpler direct check for these major retailers
-                    domain_name = retailer.split('.')[0]
-                    all_retailers.append({
-                        "Retailer": domain_name.capitalize(),
-                        "Domain": retailer,
-                        "Link": f"https://{retailer}/search?q={quote_plus(brand_name)}",
-                        "Product": f"Search for {brand_name}",
-                        "Price": "N/A",
-                        "Source": "Direct Retailer Check"
-                    })
-                    seen_domains.add(retailer)
-                except:
-                    continue
-    
     # Clear progress message
     progress_message.empty()
     
@@ -408,30 +382,6 @@ if st.button("Find Retailers"):
             
             for retailer, url in common_retailers.items():
                 st.markdown(f"- [{retailer}]({url})")
-
-# Additional information about the app
-with st.expander("About this app"):
-    st.write("""
-    This app helps you find retailers that carry a specific brand's products by searching Google Shopping.
-    
-    **Features:**
-    - Searches Google Shopping to identify retailers carrying the brand
-    - Uses multiple search strategies to maximize results
-    - Excludes the brand's own website from results
-    - Provides direct links to product pages when available
-    
-    **Tips for best results:**
-    - Enter the exact brand name
-    - If you know the brand's website, enter it to exclude the brand's own site from results
-    - Specify the industry to get more relevant results (e.g., "cosmetics", "electronics")
-    - Use filters to narrow down results (e.g., "usa", "official retailer")
-    
-    **Note on rate limiting:**
-    Google may temporarily limit search requests. If you encounter this issue:
-    - Wait a few minutes before trying again
-    - Try different variations of the brand name
-    - Use more specific industry terms to narrow results
-    """)
 
 # Add footer with timestamp
 st.markdown("---")
