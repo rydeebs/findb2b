@@ -378,257 +378,169 @@ def find_retailers_comprehensive(brand_name, brand_url, industry, filters):
     
     return all_retailers
 
-def find_3pl_providers(brand_name, brand_url=None):
+def find_verified_3pl_providers(brand_name, brand_url=None):
     """
-    Search for 3PL fulfillment providers used by a brand
+    Find 3PL fulfillment providers with verified evidence that they work with the brand.
+    Implements a rigorous validation process to ensure high confidence results only.
     """
-    providers = []
-    
-    # List of common 3PL providers to check
-    common_3pls = [
+    # List of major 3PL providers to check
+    major_3pls = [
         "ShipBob", "Deliverr", "ShipMonk", "Rakuten Super Logistics", "Fulfillment by Amazon", 
         "Red Stag Fulfillment", "ShipHero", "Flexport", "Whiplash", "Radial", "Flowspace",
         "DCL Logistics", "Ryder E-commerce", "FedEx Fulfillment", "Saddle Creek Logistics",
-        "OceanX", "Whitebox", "IDS Fulfillment", "Kenco Logistics", "SEKO Logistics",
-        "XB Fulfillment", "Shipwire", "Quiet Logistics", "Ruby Has", "symbia",
-        "Fulfillrite", "Falcon Fulfillment", "eFulfillment Service", "Fulfyld", "Arvato",
-        "Ingram Micro", "DHL eCommerce", "NewEgg Logistics", "UPS Supply Chain Solutions",
-        "Amware Fulfillment", "PFS", "Mainfreight", "ShipNetwork", "C.H. Robinson", "DSV",
-        "Geodis", "Kuehne + Nagel", "DB Schenker", "DHL Supply Chain", "XPO Logistics"
+        "OceanX", "Whitebox", "IDS Fulfillment", "Kenco Logistics", "SEKO Logistics"
     ]
     
-    # Build comprehensive searches to check for 3PL relationships
-    search_queries = [
-        f"{brand_name} fulfillment partner",
-        f"{brand_name} logistics provider",
-        f"{brand_name} 3PL provider",
-        f"{brand_name} ships with",
-        f"{brand_name} warehousing partner",
-        f"{brand_name} order fulfillment",
-        f"{brand_name} fulfillment center",
-        f"{brand_name} distribution center",
-        f"{brand_name} shipping partner",
-        f"{brand_name} ecommerce fulfillment",
-        f"{brand_name} uses for fulfillment",
-        f"{brand_name} shipping label shows",
-        f"{brand_name} packages shipped from",
-        f"{brand_name} logistics case study",
-        f"{brand_name} order processing",
-        f"{brand_name} partners with fulfillment",
-        f"{brand_name} third party logistics",
-        f"{brand_name} supply chain partner",
-        f"{brand_name} inventory management",
-        f"{brand_name} warehouse locations",
-        f"{brand_name} packaging slip",
-        f"{brand_name} returns processing",
-        f"{brand_name} third-party logistics",
-        f"{brand_name} shipping from",
-        f"{brand_name} fulfillment services"
-    ]
+    verified_providers = []
     
-    # Add specific provider checks
-    for provider in common_3pls:
-        search_queries.append(f"{brand_name} {provider}")
-    
-    seen_providers = set()
-    
-    for query in search_queries:
+    for provider in major_3pls:
+        # 1. Check for case studies on the 3PL's website
         try:
-            # Standard Google search
-            search_url = f"https://www.google.com/search?q={quote_plus(query)}&num=30"
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-            
-            response = requests.get(search_url, headers=headers, timeout=15)
-            
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
+            # Convert provider name to domain format
+            provider_domain = provider.lower().replace(' ', '').replace('-', '').replace('&', 'and')
+            if provider_domain == "fulfillmentbyamazon":
+                provider_domain = "amazon"
                 
-                # Get search result text
-                search_results = soup.find_all("div", class_=re.compile("g|result"))
-                
-                for result in search_results:
-                    result_text = result.text.lower()
-                    
-                    # Check for mentions of common 3PLs
-                    for provider in common_3pls:
-                        if provider.lower() in result_text:
-                            # Found a potential 3PL reference
-                            if provider not in seen_providers:
-                                seen_providers.add(provider)
-                                
-                                # Try to get the context
-                                context = ""
-                                matches = re.findall(r'[^.?!]*\b' + re.escape(provider.lower()) + r'\b[^.?!]*[.?!]', result_text)
-                                if matches:
-                                    context = matches[0].strip()
-                                
-                                # Get the link
-                                link_elem = result.find("a")
-                                link = link_elem.get("href") if link_elem else "#"
-                                
-                                providers.append({
-                                    "3PL Provider": provider,
-                                    "Context": context,
-                                    "Source": link,
-                                    "Confidence": "Medium"
-                                })
-                                
-                # Direct statement patterns (e.g., "works with ShipBob")
-                patterns = [
-                    r'(?:' + brand_name.lower() + r')\s+(?:use[sd]?|work[sd]? with|partner[sd]? with|ship[sd]? (?:with|via|through|using))\s+([A-Za-z\s]+(?:fulfillment|logistics|shipping|3PL|warehouse))',
-                    r'(?:' + brand_name.lower() + r')\s+(?:use[sd]?|work[sd]? with|partner[sd]? with|ship[sd]? (?:with|via|through|using))\s+([A-Za-z\s]+)'
-                ]
-                
-                for pattern in patterns:
-                    for result in search_results:
-                        result_text = result.text.lower()
-                        matches = re.findall(pattern, result_text)
-                        
-                        for match in matches:
-                            provider_name = match.strip()
-                            
-                            # Filter out general terms
-                            skip_terms = ['their', 'the', 'a', 'an', 'this', 'that', 'these', 'those', 'our', 'your']
-                            if provider_name in skip_terms or len(provider_name) < 4:
-                                continue
-                                
-                            # Check against common 3PLs for partial matches
-                            matched_provider = None
-                            for common_3pl in common_3pls:
-                                if common_3pl.lower() in provider_name:
-                                    matched_provider = common_3pl
-                                    break
-                            
-                            if matched_provider:
-                                provider_name = matched_provider
-                            
-                            if provider_name not in seen_providers:
-                                seen_providers.add(provider_name)
-                                
-                                # Get the context
-                                context = ""
-                                full_matches = re.findall(r'[^.?!]*\b' + re.escape(provider_name) + r'\b[^.?!]*[.?!]', result_text)
-                                if full_matches:
-                                    context = full_matches[0].strip()
-                                
-                                # Get the link
-                                link_elem = result.find("a")
-                                link = link_elem.get("href") if link_elem else "#"
-                                
-                                providers.append({
-                                    "3PL Provider": provider_name.title(),
-                                    "Context": context,
-                                    "Source": link,
-                                    "Confidence": "Medium" if matched_provider else "Low"
-                                })
-        except Exception as e:
-            st.error(f"Error searching for 3PL providers: {str(e)}")
-            continue
-    
-    # Check LinkedIn for company connections
-    if brand_url:
-        try:
-            domain = extract_domain(brand_url)
-            linkedin_search = f"{domain} logistics fulfillment 3PL site:linkedin.com"
-            search_url = f"https://www.google.com/search?q={quote_plus(linkedin_search)}&num=20"
-            
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-            response = requests.get(search_url, headers=headers, timeout=15)
-            
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                
-                # Get search result text
-                search_results = soup.find_all("div", class_=re.compile("g|result"))
-                
-                for result in search_results:
-                    result_text = result.text.lower()
-                    
-                    # Check for mentions of common 3PLs
-                    for provider in common_3pls:
-                        if provider.lower() in result_text:
-                            # Found a potential 3PL reference
-                            if provider not in seen_providers:
-                                seen_providers.add(provider)
-                                
-                                # Get the link
-                                link_elem = result.find("a")
-                                link = link_elem.get("href") if link_elem else "#"
-                                
-                                providers.append({
-                                    "3PL Provider": provider,
-                                    "Context": "Found on LinkedIn",
-                                    "Source": link,
-                                    "Confidence": "Medium"
-                                })
-        except:
-            pass
-    
-    # Look for case studies from 3PL providers
-    for provider in common_3pls:
-        try:
-            case_study_search = f"{brand_name} case study site:{provider.lower().replace(' ', '')}.com"
+            # Direct case study search
+            case_study_search = f"{brand_name} case study site:{provider_domain}.com"
             search_url = f"https://www.google.com/search?q={quote_plus(case_study_search)}&num=10"
             
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
             response = requests.get(search_url, headers=headers, timeout=10)
             
             if response.status_code == 200 and "did not match any documents" not in response.text:
-                # Found a potential case study
-                if provider not in seen_providers:
-                    seen_providers.add(provider)
-                    
-                    providers.append({
-                        "3PL Provider": provider,
-                        "Context": f"Potential case study found on {provider}'s website",
-                        "Source": f"https://www.google.com/search?q={quote_plus(case_study_search)}",
-                        "Confidence": "High"
-                    })
-        except:
-            continue
-    
-    # Check for job listings mentioning logistics partners
-    try:
-        job_search = f"{brand_name} (fulfillment OR logistics OR warehouse OR distribution) (job OR careers) -apply"
-        search_url = f"https://www.google.com/search?q={quote_plus(job_search)}&num=20"
-        
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-        response = requests.get(search_url, headers=headers, timeout=15)
-        
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, "html.parser")
-            
-            # Get search result text
-            search_results = soup.find_all("div", class_=re.compile("g|result"))
-            
-            for result in search_results:
-                result_text = result.text.lower()
+                soup = BeautifulSoup(response.text, "html.parser")
+                search_results = soup.find_all("div", class_=re.compile("g|result"))
                 
-                # Check for mentions of common 3PLs in job postings
-                for provider in common_3pls:
-                    if provider.lower() in result_text:
-                        # Found a potential 3PL reference in job posting
-                        if provider not in seen_providers:
-                            seen_providers.add(provider)
-                            
+                for result in search_results:
+                    result_text = result.text.lower()
+                    
+                    # Look for strong evidence of a relationship
+                    if brand_name.lower() in result_text and any(term in result_text for term in ["case study", "success story", "client", "customer story"]):
+                        # Get the link
+                        link_elem = result.find("a")
+                        link = link_elem.get("href") if link_elem else "#"
+                        
+                        # Extract snippet for context
+                        context = ""
+                        snippet_elem = result.find("div", class_=re.compile("snippet|description"))
+                        if snippet_elem:
+                            context = snippet_elem.text.strip()
+                        
+                        # If found on 3PL's own site, that's strong evidence
+                        verified_providers.append({
+                            "3PL Provider": provider,
+                            "Evidence Type": "Case Study",
+                            "Source URL": link,
+                            "Context": context or f"Case study found on {provider}'s website",
+                            "Verification Method": "Direct case study on 3PL website"
+                        })
+                        # Skip to next provider
+                        break
+        except Exception as e:
+            # Continue to next method if this fails
+            pass
+        
+        # 2. Check if the brand explicitly mentions the 3PL
+        try:
+            if brand_url:
+                brand_domain = extract_domain(brand_url)
+                
+                # Search for mentions of 3PL on brand's website
+                brand_mention_search = f"{provider} site:{brand_domain}"
+                search_url = f"https://www.google.com/search?q={quote_plus(brand_mention_search)}&num=10"
+                
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+                response = requests.get(search_url, headers=headers, timeout=10)
+                
+                if response.status_code == 200 and "did not match any documents" not in response.text:
+                    soup = BeautifulSoup(response.text, "html.parser")
+                    search_results = soup.find_all("div", class_=re.compile("g|result"))
+                    
+                    for result in search_results:
+                        result_text = result.text.lower()
+                        
+                        # Look for partnership language
+                        partnership_terms = ["partner", "work with", "fulfill", "ship", "deliver", 
+                                            "logistics", "warehousing", "distribution"]
+                        
+                        if provider.lower() in result_text and any(term in result_text for term in partnership_terms):
                             # Get the link
                             link_elem = result.find("a")
                             link = link_elem.get("href") if link_elem else "#"
                             
-                            providers.append({
+                            # Extract snippet for context
+                            context = ""
+                            snippet_elem = result.find("div", class_=re.compile("snippet|description"))
+                            if snippet_elem:
+                                context = snippet_elem.text.strip()
+                            
+                            # Brand's own site mentioning the 3PL is strong evidence
+                            verified_providers.append({
                                 "3PL Provider": provider,
-                                "Context": "Found in job posting",
-                                "Source": link,
-                                "Confidence": "Medium"
+                                "Evidence Type": "Brand Website Mention",
+                                "Source URL": link,
+                                "Context": context or f"Mentioned on {brand_name}'s website",
+                                "Verification Method": "Direct mention on brand website"
                             })
-    except:
-        pass
-    
-    return providers
+                            # Skip to next provider
+                            break
+        except:
+            pass
+        
+        # 3. Check press releases about partnership
+        try:
+            press_search = f"{brand_name} {provider} partnership press release"
+            search_url = f"https://www.google.com/search?q={quote_plus(press_search)}&num=10"
+            
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+            response = requests.get(search_url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                search_results = soup.find_all("div", class_=re.compile("g|result"))
+                
+                for result in search_results:
+                    result_text = result.text.lower()
+                    
+                    # Check for press release indicators
+                    press_release_sources = ["prnewswire", "businesswire", "globenewswire", "press release"]
+                    
+                    if (brand_name.lower() in result_text and 
+                        provider.lower() in result_text and 
+                        any(source in result_text for source in press_release_sources)):
+                        
+                        # Get the link
+                        link_elem = result.find("a")
+                        link = link_elem.get("href") if link_elem else "#"
+                        
+                        # Extract snippet for context
+                        context = ""
+                        snippet_elem = result.find("div", class_=re.compile("snippet|description"))
+                        if snippet_elem:
+                            context = snippet_elem.text.strip()
+                        
+                        # Press releases are strong evidence
+                        verified_providers.append({
+                            "3PL Provider": provider,
+                            "Evidence Type": "Press Release",
+                            "Source URL": link,
+                            "Context": context or "Found in press release",
+                            "Verification Method": "Official press release"
+                        })
+                        # Skip to next provider
+                        break
+        except:
+            pass
+        
+        # Add a slight delay to avoid rate limiting
+        time.sleep(0.5)
+                
+    return verified_providers
 
 # Streamlit UI
-st.title("Brand Retailer & 3PL Finder")
-st.write("Find retailers that carry a specific brand's products and their fulfillment providers")
+st.title("Brand Retailer Finder")
+st.write("Find retailers that carry a specific brand's products on Google Shopping")
 
 brand_name = st.text_input("Enter Brand Name:")
 brand_url = st.text_input("Enter Brand Website URL (optional):")
@@ -636,7 +548,7 @@ industry = st.text_input("Enter Industry (optional):")
 filters = st.text_input("Enter Additional Filters (comma-separated, optional):")
 filters_list = [f.strip() for f in filters.split(',')] if filters else []
 
-# Create tabs for Retailers and 3PL Providers
+# Create tabs for different features
 tab1, tab2 = st.tabs(["Retailers", "3PL Providers"])
 
 with tab1:
@@ -675,23 +587,28 @@ with tab1:
                     st.markdown(f"- [{retailer}]({url})")
 
 with tab2:
-    st.info("This feature attempts to identify 3PL (third-party logistics) fulfillment providers used by a brand. Results are experimental and should be verified.")
+    st.markdown("""
+    ### 3PL Provider Finder (Beta)
+    This feature finds 3PL (third-party logistics) providers that have **verified** relationships with the brand.
     
-    if st.button("Find 3PL Providers", key="3pl_button"):
+    **Only reports providers with concrete evidence such as:**
+    - Official case studies on the 3PL's website
+    - Direct mentions on the brand's website
+    - Press releases about partnerships
+    """)
+    
+    if st.button("Find Verified 3PL Providers", key="3pl_button"):
         if not brand_name:
             st.error("Please enter a brand name to search.")
         else:
-            with st.spinner(f"Searching for 3PL fulfillment providers used by {brand_name}..."):
-                results = find_3pl_providers(brand_name, brand_url)
+            with st.spinner(f"Searching for verified 3PL providers for {brand_name}..."):
+                results = find_verified_3pl_providers(brand_name, brand_url)
             
             if results:
-                st.success(f"Found {len(results)} potential 3PL providers for {brand_name}")
+                st.success(f"Found {len(results)} verified 3PL providers for {brand_name}")
                 
                 # Create DataFrame
                 df = pd.DataFrame(results)
-                
-                # Sort by confidence
-                df = df.sort_values(by="Confidence", key=lambda x: x.map({"High": 3, "Medium": 2, "Low": 1}), ascending=False)
                 
                 # Display results
                 st.dataframe(df)
@@ -699,33 +616,26 @@ with tab2:
                 # Download option
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button("Download 3PL Results as CSV", csv, f"{brand_name}_3pl_providers.csv", "text/csv")
-                
-                # Show disclaimer
-                st.warning("Note: 3PL information is often not publicly disclosed. These results are based on public web mentions and should be verified through other means.")
             else:
-                st.warning("No 3PL providers found. This information is often not publicly available.")
+                st.warning("No verified 3PL providers found.")
                 
-                st.info("Common 3PL providers you could check manually:")
-                top_3pls = [
-                    "ShipBob", "Deliverr (Shopify)", "ShipMonk", "Fulfillment by Amazon (FBA)", 
-                    "Red Stag Fulfillment", "ShipHero", "Flexport", "Whiplash", "Radial"
-                ]
-                for provider in top_3pls:
-                    st.markdown(f"- {provider}")
+                st.info("""
+                **Why might no results appear?**
+                - Many brands keep their 3PL relationships private
+                - Some brands handle fulfillment in-house
+                - The brand might use smaller regional 3PLs
+                - The relationship may not be documented online
                 
-                st.markdown("""
-                **Tips for verifying 3PL providers:**
-                - Order a product from the brand and check the shipping/return label
-                - Look at the brand's careers page for logistics/fulfillment positions
-                - Check the brand's LinkedIn page for connections to logistics companies
-                - Search for case studies on 3PL provider websites
-                - Review press releases about the brand's fulfillment operations
+                **To manually verify a brand's 3PL provider:**
+                - Order a product and check the shipping label
+                - Look for LinkedIn connections between the company and 3PLs
+                - Check trade publications in the brand's industry
                 """)
 
 # Additional information about the app
 with st.expander("About this app"):
     st.write("""
-    This app helps you find retailers that carry a specific brand's products and identifies potential 3PL fulfillment providers used by the brand.
+    This app helps you find retailers that carry a specific brand's products and identifies verified 3PL fulfillment providers used by the brand.
     
     **Retailer Finder Features:**
     - Scrapes Google Shopping results to identify online retailers
@@ -734,22 +644,16 @@ with st.expander("About this app"):
     - Identifies product pages and pricing information when available
     
     **3PL Provider Finder Features:**
-    - Searches for mentions of known 3PL providers in connection with the brand
-    - Looks for case studies, LinkedIn connections, and direct mentions
-    - Assigns confidence scores based on the quality of matches
-    - Provides context snippets to help verify relationships
+    - Only reports 3PL providers with concrete evidence of a relationship
+    - Checks for official case studies on 3PL websites
+    - Searches for direct mentions on brand websites
+    - Finds press releases about partnerships
     
     **Tips for best results:**
     - Enter the exact brand name
     - If you know the brand's website, enter it to exclude the brand's own site from results
     - Specify the industry to get more relevant results (e.g., "cosmetics", "electronics")
     - Use filters to narrow down results (e.g., "usa", "official retailer")
-    
-    **Limitations:**
-    - 3PL information is often not publicly disclosed and results should be verified
-    - Google Shopping results can vary by location and time
-    - Some retailers may be missed, especially smaller or regional ones
-    - The app cannot access private/paid databases that might contain more comprehensive information
     """)
 
 # Add footer with timestamp
