@@ -339,9 +339,187 @@ def find_retailers_comprehensive(brand_name, brand_url, industry, filters):
     
     return all_retailers
 
+def find_3pl_relationships(brand_name, brand_url=None):
+    """
+    Search for articles or mentions that indicate the brand works with specific 3PL providers
+    """
+    # List of common 3PL providers to check for
+    common_3pls = [
+        "ShipBob", "Deliverr", "ShipMonk", "Rakuten Super Logistics", "Fulfillment by Amazon", 
+        "Red Stag Fulfillment", "ShipHero", "Flexport", "Whiplash", "Radial", "Flowspace",
+        "DCL Logistics", "Ryder E-commerce", "FedEx Fulfillment", "Saddle Creek Logistics",
+        "OceanX", "Whitebox", "IDS Fulfillment", "Kenco Logistics", "SEKO Logistics"
+    ]
+    
+    relationships = []
+    progress_message = st.empty()
+    
+    # Build search queries to find articles about the brand's fulfillment
+    search_queries = [
+        f"{brand_name} fulfillment partner",
+        f"{brand_name} logistics provider",
+        f"{brand_name} 3PL provider",
+        f"{brand_name} ecommerce fulfillment",
+        f"{brand_name} shipping partner"
+    ]
+    
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0"
+    ]
+    
+    headers = {
+        "User-Agent": random.choice(user_agents),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer": "https://www.google.com/",
+        "Connection": "keep-alive",
+    }
+    
+    # Separately search for direct connections to each 3PL
+    found_3pls = set()
+    
+    # Try each search query
+    for query in search_queries:
+        try:
+            progress_message.info(f"Searching for: {query}")
+            
+            # Add random delay to avoid rate limiting
+            time.sleep(random.uniform(2.0, 4.0))
+            
+            # Encode query
+            encoded_query = quote_plus(query)
+            search_url = f"https://www.google.com/search?q={encoded_query}&num=10"
+            
+            # Make request
+            response = requests.get(search_url, headers=headers, timeout=15)
+            
+            if response.status_code != 200:
+                progress_message.warning(f"Search failed: {response.status_code}")
+                continue
+            
+            # Parse response
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Extract search results
+            results = soup.find_all('div', {'class': re.compile('g|result')})
+            
+            for result in results:
+                result_text = result.get_text().lower()
+                
+                # Check for mentions of 3PLs in this result
+                for provider in common_3pls:
+                    if provider.lower() in result_text:
+                        # Found a potential relationship
+                        if provider not in found_3pls:
+                            # Get the URL
+                            link_elem = result.find('a')
+                            link = link_elem.get('href') if link_elem else "#"
+                            
+                            # Get context (snippet)
+                            snippet = ""
+                            snippet_elem = result.find('div', {'class': re.compile('VwiC3b|st|snippet')})
+                            if snippet_elem:
+                                snippet = snippet_elem.get_text()
+                            
+                            # Extract title
+                            title = ""
+                            title_elem = result.find('h3')
+                            if title_elem:
+                                title = title_elem.get_text()
+                            
+                            relationships.append({
+                                "3PL Provider": provider,
+                                "Article Title": title,
+                                "Context": snippet,
+                                "Source": link,
+                                "Type": "Mention in article"
+                            })
+                            
+                            found_3pls.add(provider)
+            
+        except Exception as e:
+            progress_message.error(f"Error during search: {str(e)}")
+            continue
+    
+    # Now search specifically for case studies
+    for provider in common_3pls:
+        # Skip if already found
+        if provider in found_3pls:
+            continue
+            
+        try:
+            # Format provider name for domain
+            provider_domain = provider.lower().replace(' ', '').replace('-', '').replace('&', 'and')
+            if provider_domain == "fulfillmentbyamazon":
+                provider_domain = "amazon"
+                
+            # Create case study search
+            case_study_query = f"{brand_name} case study site:{provider_domain}.com"
+            encoded_query = quote_plus(case_study_query)
+            
+            # Delay to avoid rate limiting
+            time.sleep(random.uniform(2.0, 4.0))
+            
+            # Make request
+            search_url = f"https://www.google.com/search?q={encoded_query}&num=5"
+            response = requests.get(search_url, headers=headers, timeout=15)
+            
+            if response.status_code != 200:
+                continue
+                
+            # Parse response
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Check if we actually got results
+            if "did not match any documents" in soup.get_text():
+                continue
+                
+            # Extract search results
+            results = soup.find_all('div', {'class': re.compile('g|result')})
+            
+            if results:
+                # Likely found a case study
+                result = results[0]  # Take the first result
+                
+                # Get the URL
+                link_elem = result.find('a')
+                link = link_elem.get('href') if link_elem else "#"
+                
+                # Get title
+                title = ""
+                title_elem = result.find('h3')
+                if title_elem:
+                    title = title_elem.get_text()
+                
+                # Get snippet
+                snippet = ""
+                snippet_elem = result.find('div', {'class': re.compile('VwiC3b|st|snippet')})
+                if snippet_elem:
+                    snippet = snippet_elem.get_text()
+                
+                relationships.append({
+                    "3PL Provider": provider,
+                    "Article Title": title,
+                    "Context": snippet,
+                    "Source": link,
+                    "Type": "Case Study"
+                })
+                
+                found_3pls.add(provider)
+                
+        except Exception as e:
+            continue
+    
+    # Clear progress message
+    progress_message.empty()
+    
+    return relationships
+
 # Streamlit UI
-st.title("Brand Retailer Finder")
-st.write("Find retailers that carry a specific brand's products on Google Shopping")
+st.title("Brand Retailer & 3PL Finder")
+st.write("Find retailers that carry a specific brand's products and their 3PL providers")
 
 brand_name = st.text_input("Enter Brand Name:")
 brand_url = st.text_input("Enter Brand Website URL (optional):")
@@ -349,39 +527,83 @@ industry = st.text_input("Enter Industry (optional):")
 filters = st.text_input("Enter Additional Filters (comma-separated, optional):")
 filters_list = [f.strip() for f in filters.split(',')] if filters else []
 
-if st.button("Find Retailers"):
-    if not brand_name:
-        st.error("Please enter a brand name to search.")
-    else:
-        with st.spinner(f"Searching for retailers that carry {brand_name}..."):
-            results = find_retailers_comprehensive(brand_name, brand_url, industry, filters_list)
-        
-        if results:
-            st.success(f"Found {len(results)} retailers carrying {brand_name}")
-            
-            # Create DataFrame
-            df = pd.DataFrame(results)
-            
-            # Display results
-            st.dataframe(df)
-            
-            # Download option
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Results as CSV", csv, f"{brand_name}_retailers.csv", "text/csv")
+# Create tabs for different functions
+tab1, tab2 = st.tabs(["Retailers", "3PL Providers"])
+
+with tab1:
+    if st.button("Find Retailers", key="retailer_button"):
+        if not brand_name:
+            st.error("Please enter a brand name to search.")
         else:
-            st.warning("No retailers found. This might be due to Google's rate limiting. Try again in a few minutes.")
+            with st.spinner(f"Searching for retailers that carry {brand_name}..."):
+                results = find_retailers_comprehensive(brand_name, brand_url, industry, filters_list)
             
-            # Suggest direct checks
-            st.info("You can manually check these common retailers:")
-            common_retailers = {
-                "Amazon": f"https://www.amazon.com/s?k={quote_plus(brand_name)}",
-                "Target": f"https://www.target.com/s?searchTerm={quote_plus(brand_name)}",
-                "Walmart": f"https://www.walmart.com/search?q={quote_plus(brand_name)}",
-                "QVC": f"https://www.qvc.com/content/search.html?qq={quote_plus(brand_name)}"
-            }
+            if results:
+                st.success(f"Found {len(results)} retailers carrying {brand_name}")
+                
+                # Create DataFrame and ensure all results are from Google Shopping
+                df = pd.DataFrame(results)
+                
+                # Display results
+                st.dataframe(df)
+                
+                # Download option
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button("Download Results as CSV", csv, f"{brand_name}_retailers.csv", "text/csv")
+            else:
+                st.warning("No retailers found. This might be due to Google's rate limiting. Try again in a few minutes.")
+                
+                # Suggest direct checks
+                st.info("You can manually check these common retailers:")
+                common_retailers = {
+                    "Amazon": f"https://www.amazon.com/s?k={quote_plus(brand_name)}",
+                    "Target": f"https://www.target.com/s?searchTerm={quote_plus(brand_name)}",
+                    "Walmart": f"https://www.walmart.com/search?q={quote_plus(brand_name)}",
+                    "QVC": f"https://www.qvc.com/content/search.html?qq={quote_plus(brand_name)}"
+                }
+                
+                for retailer, url in common_retailers.items():
+                    st.markdown(f"- [{retailer}]({url})")
+
+with tab2:
+    st.markdown("""
+    ### 3PL Provider Finder
+    This feature searches for articles and case studies that mention the brand's relationship with 3PL (third-party logistics) providers.
+    
+    Results are based on online mentions and should be verified through other means.
+    """)
+    
+    if st.button("Find 3PL Relationships", key="3pl_button"):
+        if not brand_name:
+            st.error("Please enter a brand name to search.")
+        else:
+            with st.spinner(f"Searching for 3PL relationships for {brand_name}..."):
+                results = find_3pl_relationships(brand_name, brand_url)
             
-            for retailer, url in common_retailers.items():
-                st.markdown(f"- [{retailer}]({url})")
+            if results:
+                st.success(f"Found {len(results)} potential 3PL relationships for {brand_name}")
+                
+                # Create DataFrame
+                df = pd.DataFrame(results)
+                
+                # Display results
+                st.dataframe(df)
+                
+                # Download option
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button("Download 3PL Results as CSV", csv, f"{brand_name}_3pl_relationships.csv", "text/csv")
+            else:
+                st.warning("No 3PL relationships found in online articles.")
+                
+                st.info("""
+                **Common 3PL providers to check manually:**
+                - ShipBob
+                - Deliverr (Shopify Fulfillment Network)
+                - ShipMonk
+                - Fulfillment by Amazon (FBA)
+                - Flexport
+                - Red Stag Fulfillment
+                """)
 
 # Add footer with timestamp
 st.markdown("---")
