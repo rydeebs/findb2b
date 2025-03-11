@@ -636,6 +636,7 @@ industry = st.text_input("Enter Industry (optional):")
 filters = st.text_input("Enter Additional Filters (comma-separated, optional):")
 filters_list = [f.strip() for f in filters.split(',')] if filters else []
 
+# Create tabs for Retailers and 3PL Providers
 tab1, tab2 = st.tabs(["Retailers", "3PL Providers"])
 
 with tab1:
