@@ -55,10 +55,47 @@ def get_retailer_name_from_domain(domain):
     
     return domain
 
+def validate_product_url(url, brand_name, product_name):
+    """
+    Validate that a URL likely points to the correct product by checking:
+    1. If the URL contains the brand name or product keywords
+    2. If the URL follows common product URL patterns
+    
+    Returns True if valid, False otherwise
+    """
+    # Skip validation for direct search URLs we construct
+    if "/search?q=" in url:
+        return True
+    
+    # Check if URL contains brand or product keywords
+    brand_terms = [term.lower() for term in brand_name.split() if len(term) > 2]
+    product_terms = [term.lower() for term in product_name.split() if len(term) > 2]
+    
+    # Basic URL path validation
+    url_path = urlparse(url).path.lower()
+    
+    # Check if any brand terms are in the URL path
+    brand_in_url = any(term in url_path for term in brand_terms)
+    
+    # Check if any product terms are in the URL path
+    product_in_url = any(term in url_path for term in product_terms)
+    
+    # Check for common product URL patterns
+    product_patterns = [
+        "/p/", "/product/", "/products/", "/item/", "/buy/", 
+        "/shop/", "/dp/", "/ip/", "/pd/"
+    ]
+    has_product_pattern = any(pattern in url_path for pattern in product_patterns)
+    
+    # Consider valid if either:
+    # 1. URL contains brand/product terms
+    # 2. URL follows product pattern and contains product terms
+    return brand_in_url or (has_product_pattern and product_in_url)
+
 def scrape_google_shopping(brand_name, brand_url=None, max_results=20):
     """
-    Enhanced scraper for Google Shopping that ensures retailer names match domains
-    and limits results to the top retailers.
+    Enhanced scraper for Google Shopping that ensures retailer URLs are valid
+    and contain the brand or product name.
     """
     # Clean up brand URL if provided
     brand_domain = extract_domain(brand_url) if brand_url else None
@@ -115,7 +152,7 @@ def scrape_google_shopping(brand_name, brand_url=None, max_results=20):
             
             # Skip if product doesn't contain brand name parts
             brand_parts = brand_name.lower().split()
-            if not any(part in product_name.lower() for part in brand_parts):
+            if not any(part in product_name.lower() for part in brand_parts if len(part) > 2):
                 continue
             
             # Extract price
@@ -163,6 +200,11 @@ def scrape_google_shopping(brand_name, brand_url=None, max_results=20):
                 if domain in seen_domains:
                     continue
                 
+                # Validate that the URL points to a relevant product
+                if not validate_product_url(actual_url, brand_name, product_name):
+                    # If URL doesn't validate, create a search URL instead
+                    actual_url = f"https://{domain}/search?q={quote_plus(brand_name)}"
+                
                 seen_domains.add(domain)
                 
                 # Get proper retailer name from domain
@@ -196,12 +238,14 @@ def scrape_google_shopping(brand_name, brand_url=None, max_results=20):
             for retail in key_retailers:
                 if retail["Domain"] not in seen_domains and len(retailers) < max_results:
                     retailer_name = get_retailer_name_from_domain(retail["Domain"])
+                    # Create a search URL that definitely contains the brand name
+                    search_url = f"https://{retail['Domain']}/search?q={quote_plus(brand_name)}"
                     retailers.append({
                         "Retailer": retailer_name,
                         "Domain": retail["Domain"],
                         "Product": "SFH Strong Protein",
                         "Price": retail["Price"],
-                        "Link": f"https://{retail['Domain']}/search?q=sfh+strong"
+                        "Link": search_url
                     })
                     seen_domains.add(retail["Domain"])
         
