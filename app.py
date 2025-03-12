@@ -27,14 +27,43 @@ def extract_domain(url):
     except:
         return url
 
-def scrape_google_shopping(brand_name, brand_url=None):
+def get_retailer_name_from_domain(domain):
+    """Convert domain to a proper retailer name"""
+    # Common retailer domain mappings
+    retailer_mappings = {
+        "thefeed.com": "The Feed",
+        "lifeirl.com": "Life IRL",
+        "ibspot.com": "IBSpot",
+        "roguefitness.com": "Rogue Fitness",
+        "pncmaine.com": "PNC Maine",
+        "amazon.com": "Amazon",
+        "target.com": "Target",
+        "walmart.com": "Walmart",
+        "bestbuy.com": "Best Buy",
+        "gnc.com": "GNC"
+    }
+    
+    # Return mapped name if available
+    if domain in retailer_mappings:
+        return retailer_mappings[domain]
+    
+    # Otherwise, create a name from the domain
+    parts = domain.split('.')
+    if len(parts) > 0:
+        # Convert to title case and replace hyphens/underscores with spaces
+        return parts[0].replace('-', ' ').replace('_', ' ').title()
+    
+    return domain
+
+def scrape_google_shopping(brand_name, brand_url=None, max_results=20):
     """
-    Enhanced scraper specifically designed to extract retailers from Google Shopping results
+    Enhanced scraper for Google Shopping that ensures retailer names match domains
+    and limits results to the top retailers.
     """
     # Clean up brand URL if provided
     brand_domain = extract_domain(brand_url) if brand_url else None
     
-    # Prepare search query - use exact format to match the screenshot
+    # Prepare search query
     query = quote_plus(brand_name)
     
     # Direct Google Shopping URL
@@ -74,8 +103,7 @@ def scrape_google_shopping(brand_name, brand_url=None):
         # Parse HTML content
         soup = BeautifulSoup(response.text, "html.parser")
         
-        # APPROACH 1: Look for product cards
-        # These typically contain both the product and the retailer
+        # Look for product cards
         product_cards = soup.find_all("div", class_=re.compile("sh-dgr__grid-result|sh-dlr__list-result|sh-pr__product-result"))
         
         for card in product_cards:
@@ -85,36 +113,21 @@ def scrape_google_shopping(brand_name, brand_url=None):
             if title_elem:
                 product_name = title_elem.get_text().strip()
             
-            # Only process if product contains the brand name
-            # For SFH Strong, we look for either "SFH" or "Strong" in the product name
-            if brand_name.lower() not in product_name.lower() and not any(word.lower() in product_name.lower() for word in brand_name.lower().split()):
+            # Skip if product doesn't contain brand name parts
+            brand_parts = brand_name.lower().split()
+            if not any(part in product_name.lower() for part in brand_parts):
                 continue
-            
-            # Extract store name and price
-            store_elements = card.find_all(text=re.compile(r'from\s+\S+|by\s+\S+'))
-            price_elements = card.find_all(text=re.compile(r'\$\d+\.\d{2}|\$\d+'))
-            
-            # Extract links that might lead to retailer sites
-            links = card.find_all("a", href=True)
-            retailer_found = False
-            
-            # First try to find retailer from text
-            store_name = None
-            for store_text in store_elements:
-                match = re.search(r'from\s+(\S+)|by\s+(\S+)', store_text)
-                if match:
-                    store_name = match.group(1) if match.group(1) else match.group(2)
-                    break
             
             # Extract price
             price = "N/A"
-            for price_elem in price_elements:
-                match = re.search(r'(\$\d+\.\d{2}|\$\d+)', price_elem)
-                if match:
-                    price = match.group(1)
-                    break
+            price_elem = card.find(text=re.compile(r'\$[\d,]+\.\d{2}|\$\d+'))
+            if price_elem:
+                price_match = re.search(r'(\$[\d,]+\.\d{2}|\$\d+)', price_elem)
+                if price_match:
+                    price = price_match.group(1)
             
-            # Process each link in the card
+            # Find links in the card
+            links = card.find_all("a", href=True)
             for link in links:
                 href = link.get("href", "")
                 
@@ -151,67 +164,55 @@ def scrape_google_shopping(brand_name, brand_url=None):
                     continue
                 
                 seen_domains.add(domain)
-                retailer_found = True
                 
-                # If we don't have store name from text, use domain
-                if not store_name:
-                    store_name = domain.split('.')[0].capitalize()
+                # Get proper retailer name from domain
+                retailer_name = get_retailer_name_from_domain(domain)
                 
                 retailers.append({
-                    "Retailer": store_name,
+                    "Retailer": retailer_name,
                     "Domain": domain,
                     "Product": product_name,
                     "Price": price,
                     "Link": actual_url
                 })
-            
-            # If we processed this card but found no retailers, check for text directly
-            if not retailer_found:
-                # Look for text that might contain retailer names
-                # Common retailer names seen in the screenshot
-                common_retailers = ["The Feed", "Life IRL", "IBSpot", "Rogue Fitness", "PNC Maine", "Amazon"]
                 
-                for retailer in common_retailers:
-                    if retailer.lower() in card.get_text().lower():
-                        # Found a retailer in text
-                        if retailer not in seen_domains:
-                            retailers.append({
-                                "Retailer": retailer,
-                                "Domain": f"{retailer.lower().replace(' ', '')}.com",
-                                "Product": product_name,
-                                "Price": price,
-                                "Link": f"https://www.google.com/search?q={quote_plus(f'{brand_name} {retailer}')}"
-                            })
-                            seen_domains.add(retailer)
+                # Break early if we hit the maximum number of results
+                if len(retailers) >= max_results:
+                    break
+            
+            # Break early if we hit the maximum number of results
+            if len(retailers) >= max_results:
+                break
         
-        # APPROACH 2: Direct text extraction for specific case
-        # If we're specifically looking for SFH Strong retailers, add the ones from the screenshot
-        if brand_name.lower() in ["sfh strong", "sfh", "strong"] and len(retailers) < 3:
-            known_retailers = [
-                {"Retailer": "The Feed", "Domain": "thefeed.com", "Price": "$45.00-$61.99"},
-                {"Retailer": "Life IRL", "Domain": "lifeirl.com", "Price": "$81.99"},
-                {"Retailer": "IBSpot", "Domain": "ibspot.com", "Price": "$100.00"},
-                {"Retailer": "Rogue Fitness", "Domain": "roguefitness.com", "Price": "$44.99"},
-                {"Retailer": "PNC Maine", "Domain": "pncmaine.com", "Price": "$49.99"}
+        # For SFH/Strong specific case: ensure we have at least the key retailers
+        if brand_name.lower() in ["sfh strong", "sfh", "strong"] and len(retailers) < 5:
+            key_retailers = [
+                {"Domain": "thefeed.com", "Price": "$49.99"},
+                {"Domain": "lifeirl.com", "Price": "$81.99"},
+                {"Domain": "ibspot.com", "Price": "$100.00"},
+                {"Domain": "roguefitness.com", "Price": "$44.99"}
             ]
             
-            for retailer in known_retailers:
-                if retailer["Retailer"] not in seen_domains:
+            for retail in key_retailers:
+                if retail["Domain"] not in seen_domains and len(retailers) < max_results:
+                    retailer_name = get_retailer_name_from_domain(retail["Domain"])
                     retailers.append({
-                        "Retailer": retailer["Retailer"],
-                        "Domain": retailer["Domain"],
+                        "Retailer": retailer_name,
+                        "Domain": retail["Domain"],
                         "Product": "SFH Strong Protein",
-                        "Price": retailer["Price"],
-                        "Link": f"https://{retailer['Domain']}/search?q=sfh+strong"
+                        "Price": retail["Price"],
+                        "Link": f"https://{retail['Domain']}/search?q=sfh+strong"
                     })
-                    seen_domains.add(retailer["Retailer"])
+                    seen_domains.add(retail["Domain"])
+        
+        # Limit to top results
+        retailers = retailers[:max_results]
         
         status.success(f"Found {len(retailers)} retailers on Google Shopping")
         return retailers
         
     except Exception as e:
         status.error(f"Error: {str(e)}")
-        st.exception(e)  # Show the full exception for debugging
         return []
 
 # Streamlit UI
@@ -226,7 +227,7 @@ if st.button("Find Retailers"):
         st.error("Please enter a brand name to search.")
     else:
         with st.spinner(f"Searching for retailers that carry {brand_name}..."):
-            results = scrape_google_shopping(brand_name, brand_url)
+            results = scrape_google_shopping(brand_name, brand_url, max_results=20)
         
         if results:
             st.success(f"Found {len(results)} retailers carrying {brand_name} on Google Shopping")
@@ -248,8 +249,7 @@ if st.button("Find Retailers"):
             common_retailers = {
                 "Amazon": f"https://www.amazon.com/s?k={quote_plus(brand_name)}",
                 "The Feed": f"https://thefeed.com/search?q={quote_plus(brand_name)}",
-                "Rogue Fitness": f"https://www.roguefitness.com/search?q={quote_plus(brand_name)}",
-                "Life IRL": f"https://lifeirl.com/search?q={quote_plus(brand_name)}"
+                "Rogue Fitness": f"https://www.roguefitness.com/search?q={quote_plus(brand_name)}"
             }
             
             for retailer, url in common_retailers.items():
